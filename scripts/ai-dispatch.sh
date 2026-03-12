@@ -724,13 +724,18 @@ ${task_description}
 
     cd "$worktree_path"
 
+    # Build title with smart truncation (add ... only if truncated)
+    local title_desc="${task_description:0:50}"
+    [[ ${#task_description} -gt 50 ]] && title_desc="${title_desc}..."
+    local title="AI Task: ${title_desc}"
+
     # Run OpenCode with the dispatch agent
     if [[ "$background_mode" == "true" ]]; then
         # Non-interactive mode (headless/background)
-        opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." "$task_prompt" 2>/dev/null
+        opencode run --agent dispatch --title "$title" "$task_prompt" 2>/dev/null
     else
         # Interactive TUI mode (default)
-        opencode --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." --prompt "$task_prompt"
+        opencode --agent dispatch --title "$title" --prompt "$task_prompt"
     fi
 
     log_success "AI dispatch completed"
