@@ -4,6 +4,7 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 
 ## Features
 
+- **Interactive Mode**: Launch OpenCode with an initial prompt that guides task input
 - **GitHub Issue Integration**: Fetch and work on GitHub issues automatically
 - **Plain Text Tasks**: Work on any task described in plain text
 - **Git Worktree Isolation**: Each task runs in its own worktree
@@ -13,6 +14,9 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 ## Quick Start
 
 ```bash
+# Interactive mode - opens OpenCode with initial prompt
+aid
+
 # Work on a GitHub issue
 aid https://github.com/user/repo/issues/123
 
@@ -34,6 +38,13 @@ aid cleanup --force
 
 ## How It Works
 
+**Interactive Mode:**
+1. **Launch**: Run `aid` with no arguments to open OpenCode
+2. **Guided Input**: Initial prompt guides you to describe your task
+3. **Direct Work**: AI works directly in your current repository
+4. **Autonomous Flow**: AI implements, commits, reviews, and can create PR
+
+**Task Mode (with arguments):**
 1. **Parse Input**: Detects GitHub issue URL or plain text task
 2. **Create Worktree**: Sets up isolated git worktree with `ai/` prefixed branch
 3. **Run OpenCode**: Launches OpenCode with dispatch agent and task prompt

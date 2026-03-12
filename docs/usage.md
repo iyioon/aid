@@ -1,5 +1,34 @@
 # Usage Guide
 
+## Interactive Mode
+
+The simplest way to use aid is without any arguments:
+
+```bash
+# Navigate to your project
+cd /path/to/your/project
+
+# Start interactive mode
+aid
+```
+
+This will:
+1. Open OpenCode immediately in your current repository
+2. Present an initial prompt that guides you to describe your task
+3. Wait for you to type your task description directly in the OpenCode interface
+4. Work on the task once you provide details
+
+### Benefits of Interactive Mode
+
+- **No setup needed**: Works directly in your current repository
+- **Guided experience**: Clear instructions on how to describe your task
+- **Immediate start**: No worktrees or session management overhead
+- **Simple workflow**: Just run `aid` and start describing what you want
+
+## Task Mode
+
+For predefined tasks, you can still use the traditional approaches:
+
 ## Basic Usage
 
 ### Working on a GitHub Issue
@@ -129,6 +158,23 @@ It follows a structured workflow:
 5. Create a PR
 
 ## Tips for Better Results
+
+### Choose the Right Mode
+
+```bash
+# Use interactive mode for:
+# - Exploratory tasks where you're not sure what you need
+# - When you want guided assistance in formulating your request
+# - Quick one-off tasks in your current repo
+aid
+
+# Use task mode for:
+# - Well-defined tasks you can describe upfront
+# - GitHub issues with detailed requirements  
+# - Tasks that benefit from isolated worktrees
+aid "Specific task description"
+aid https://github.com/owner/repo/issues/123
+```
 
 ### Write Clear Task Descriptions
 
