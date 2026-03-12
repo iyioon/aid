@@ -85,12 +85,6 @@ generate_session_id() {
     date +%Y%m%d-%H%M%S-$$
 }
 
-# Sanitize string for use in branch names
-sanitize_branch_name() {
-    local input="$1"
-    echo "$input" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-|-$//g' | cut -c1-50
-}
-
 # ==============================================================================
 # GitHub Issue Parsing
 # ==============================================================================
@@ -193,28 +187,6 @@ read_state() {
     else
         return 1
     fi
-}
-
-# Check if a branch is already being worked on
-check_existing_session() {
-    local branch_name="$1"
-
-    for state_file in "${DISPATCH_DIR}"/*.json; do
-        [[ -f "$state_file" ]] || continue
-
-        local existing_branch existing_status
-        existing_branch=$(jq -r '.branch_name' "$state_file" 2>/dev/null || echo "")
-        existing_status=$(jq -r '.status' "$state_file" 2>/dev/null || echo "")
-
-        if [[ "$existing_branch" == "$branch_name" && "$existing_status" == "running" ]]; then
-            local session_id
-            session_id=$(jq -r '.session_id' "$state_file")
-            log_warn "Branch '$branch_name' is already being worked on (session: $session_id)"
-            return 0
-        fi
-    done
-
-    return 1
 }
 
 # ==============================================================================
@@ -434,7 +406,7 @@ list_sessions() {
 # ==============================================================================
 
 interactive_dispatch() {
-    local source_repo
+    local source_repo session_id branch_name worktree_path
 
     # Get current repo path
     source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not in a git repository"
@@ -446,14 +418,50 @@ interactive_dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
-    log_info "Starting interactive OpenCode session..."
-    log_info "Repository: $source_repo"
-    log_info "Target branch for PR: $default_branch"
+    # Generate session ID and branch name
+    session_id=$(generate_session_id)
+    branch_name="aid/${session_id}"
+    worktree_path="${WORKTREES_DIR}/${session_id}"
 
-    # Change to source repo and run OpenCode with interactive TUI
-    cd "$source_repo"
+    log_info "Session ID: $session_id"
+    log_info "Branch: $branch_name"
+    log_info "Worktree: $worktree_path"
+
+    # Dry run check
+    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
+        log_warn "Dry run mode - not executing"
+        return 0
+    fi
+
+    # Fetch latest changes
+    log_info "Fetching latest changes..."
+    git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+
+    # Create worktree with new branch
+    log_info "Creating worktree..."
+    git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
+        git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
+        die "Failed to create worktree"
+
+    # Create state file
+    local state_file
+    state_file=$(create_state_file "$session_id" "$branch_name" "$worktree_path" "interactive" "tui" "Interactive session" "$source_repo")
+
+    # Set cleanup variables
+    CLEANUP_STATE_FILE="$state_file"
+    CLEANUP_WORKTREE_PATH="$worktree_path"
+    CLEANUP_BRANCH_NAME="$branch_name"
+    CLEANUP_SOURCE_REPO="$source_repo"
+
+    # Set up cleanup trap
+    trap cleanup EXIT SIGTERM SIGHUP SIGINT
+
+    log_success "Worktree created successfully"
+
+    # Change to worktree and run OpenCode with interactive TUI
+    cd "$worktree_path"
     
-    # Run OpenCode with the dispatch agent in interactive TUI mode (no prompt injection)
+    # Run OpenCode with the dispatch agent in interactive TUI mode
     opencode --agent dispatch
 
     log_success "Interactive session completed"
@@ -533,6 +541,10 @@ dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
+    # Generate session ID first - used for branch naming
+    session_id=$(generate_session_id)
+    branch_name="aid/${session_id}"
+
     # Parse input - GitHub issue, PR, or plain text
     if is_github_issue_url "$input"; then
         task_type="github_issue"
@@ -545,7 +557,6 @@ dispatch() {
         issue_number=$(extract_issue_number "$input")
         issue_title=$(echo "$issue_json" | jq -r '.title')
 
-        branch_name="aid/issue-${issue_number}"
         task_description="GitHub Issue #${issue_number}: ${issue_title}
 
 $(echo "$issue_json" | jq -r '.body // "No description provided"')
@@ -570,7 +581,6 @@ Source: $input"
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
 
-        branch_name="ai/pr-${pr_number}"
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
 $(echo "$pr_json" | jq -r '.body // "No description provided"')
@@ -586,23 +596,12 @@ Review the PR comments and requested changes, then implement the necessary fixes
     else
         task_type="plain_text"
         task_source="cli"
-
-        local sanitized
-        sanitized=$(sanitize_branch_name "$input")
-        branch_name="aid/task-${sanitized}-$(date +%H%M%S)"
         task_description="$input"
 
         log_info "Task: $input"
     fi
 
-    # Check for existing session with same branch
-    if check_existing_session "$branch_name"; then
-        die "A session is already working on this branch. Use 'aid list' to see active sessions."
-    fi
-
-    # Generate session ID
-    session_id=$(generate_session_id)
-    worktree_path="${WORKTREES_DIR}/${branch_name//\//-}"
+    worktree_path="${WORKTREES_DIR}/${session_id}"
 
     log_info "Session ID: $session_id"
     log_info "Branch: $branch_name"
