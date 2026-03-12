@@ -4,6 +4,7 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 
 ## Features
 
+- **Interactive Mode**: Launch OpenCode with an initial prompt that guides task input
 - **GitHub Issue Integration**: Fetch and work on GitHub issues automatically
 - **GitHub PR Support**: Work on PRs to implement requested changes
 - **PR Review Mode**: Read-only review of PRs with automated feedback posting
@@ -15,16 +16,22 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 ## Quick Start
 
 ```bash
-# Work on a GitHub issue
+# Interactive mode - opens OpenCode TUI with initial prompt
+aid
+
+# Direct mode - work on a GitHub issue (background execution)
 aid https://github.com/user/repo/issues/123
 
-# Work on a GitHub PR (implement requested changes)
+# Work on a GitHub PR (implement requested changes, background)
 aid https://github.com/user/repo/pull/456
 
-# Review a PR without making changes (read-only)
+# Review a PR without making changes (background)
 aid review https://github.com/user/repo/pull/456
 
-# Work on a plain text task
+# Review a PR interactively with TUI
+aid review --interactive https://github.com/user/repo/pull/456
+
+# Direct mode - work on a plain text task (background execution)
 aid "Add dark mode toggle to settings page"
 
 # List active sessions
@@ -79,18 +86,23 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 
 ## How It Works
 
-### Task Dispatch (`aid <url>` or `aid "task"`)
+**Interactive Mode (TUI):**
+1. **Launch**: Run `aid` with no arguments to open OpenCode TUI
+2. **Guided Input**: Initial prompt guides you to describe your task
+3. **Direct Work**: AI works directly in your current repository
+4. **Visual Interface**: Full OpenCode TUI experience with real-time updates
 
+**Direct Mode (Background):**
 1. **Parse Input**: Detects GitHub issue/PR URL or plain text task
 2. **Create Worktree**: Sets up isolated git worktree with `ai/` prefixed branch
-3. **Run OpenCode**: Launches OpenCode with `dispatch` agent and task prompt
+3. **Background Execution**: Runs OpenCode in non-TUI mode with minimal output
 4. **Autonomous Work**: Agent implements, commits, reviews, and creates PR
 5. **Cleanup**: Removes worktree and cleans state on completion
 
-### PR Review (`aid review <pr-url>`)
+### PR Review (`aid review [--interactive] <pr-url>`)
 
 1. **Fetch PR**: Gets PR details, diff, comments, and existing reviews
-2. **Run OpenCode**: Launches OpenCode with read-only `review` agent
+2. **Run OpenCode**: Launches OpenCode with read-only `review` agent (TUI or background)
 3. **Analyze**: Agent reviews code for issues, bugs, and improvements
 4. **Post Comment**: Agent posts review comment via `gh pr review`
 

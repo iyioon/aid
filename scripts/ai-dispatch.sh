@@ -3,8 +3,11 @@
 # aid - Autonomous AI workflow for OpenCode
 #
 # Usage:
-#   aid <github-issue-url>      Work on a GitHub issue
-#   aid "task description"      Work on a plain text task
+#   aid                         Open OpenCode TUI interactively for user to provide task
+#   aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+#   aid <github-pr-url>         Work on a GitHub PR (runs in background, no TUI)
+#   aid "task description"      Work on a plain text task (runs in background, no TUI)
+#   aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
 #   aid list                    List active dispatch sessions
 #   aid cleanup [--force]       Clean up orphaned sessions
 #   aid resume <session-id>     Resume a previous session
@@ -412,11 +415,84 @@ list_sessions() {
 }
 
 # ==============================================================================
-# PR Review (Read-Only)
+# Interactive Mode
+# ==============================================================================
+
+interactive_dispatch() {
+    local source_repo
+
+    # Get current repo path
+    source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not in a git repository"
+
+    # Get the default branch (main or master)
+    local default_branch
+    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+    log_debug "Source repo: $source_repo"
+    log_debug "Default branch: $default_branch"
+
+    log_info "Starting interactive OpenCode session..."
+    log_info "Repository: $source_repo"
+    log_info "Target branch for PR: $default_branch"
+
+    # Prepare the initial prompt that waits for user input
+    local initial_prompt
+    initial_prompt="Welcome! I'm ready to help you with any development task.
+
+## What would you like me to work on?
+
+Please describe your task in detail. I can help you with:
+
+- **New Features**: Add functionality to your application
+- **Bug Fixes**: Resolve issues and problems
+- **Refactoring**: Improve code structure and organization  
+- **Documentation**: Update README files, add code comments
+- **Testing**: Write unit tests, integration tests
+- **Configuration**: Set up build tools, CI/CD, etc.
+
+## Examples of good task descriptions:
+
+- \"Add a dark mode toggle to the settings page\"
+- \"Fix the bug where users can't submit forms with special characters\"
+- \"Refactor the authentication module to use JWT tokens\"
+- \"Add input validation to the user registration form\"
+- \"Write unit tests for the payment processing service\"
+
+## Repository Information
+
+- **Current repository**: $source_repo
+- **Target branch for PR**: $default_branch
+- **Working directory**: $(pwd)
+
+**Instructions**: Once you provide your task description, I'll:
+1. Analyze the requirements carefully
+2. Plan the implementation approach  
+3. Make the necessary changes
+4. Write/update tests if applicable
+5. Commit changes with clear messages
+6. Self-review my work
+7. Create a pull request
+
+**Please describe what you'd like me to work on:**
+
+After you provide your initial task description, I'll review it and ask if you need any clarification or if there are additional requirements I should know about before I begin working."
+
+    # Change to source repo and run OpenCode with interactive TUI
+    cd "$source_repo"
+    
+    # Run OpenCode with the dispatch agent in interactive TUI mode
+    opencode --agent dispatch --prompt "$initial_prompt"
+
+    log_success "Interactive session completed"
+}
+
+# ==============================================================================
+# PR Review (Read-Only and Interactive)
 # ==============================================================================
 
 review_pr() {
     local pr_url="$1"
+    local interactive_mode="${2:-false}"
 
     # Validate it's a PR URL (not issue)
     if ! is_github_pr_url "$pr_url"; then
@@ -440,92 +516,42 @@ review_pr() {
     pr_additions=$(echo "$pr_json" | jq -r '.additions')
     pr_deletions=$(echo "$pr_json" | jq -r '.deletions')
 
-    log_info "PR: ${pr_title}"
-    log_info "Author: ${pr_author}"
-    log_info "Changes: +${pr_additions} -${pr_deletions}"
+    log_info "PR: #${pr_number} - ${pr_title}"
+    log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
-    # Get the diff
-    log_info "Fetching diff..."
-    local pr_diff
-    pr_diff=$(gh pr diff "$pr_number" --repo "$repo_path" 2>/dev/null) ||
-        die "Failed to fetch PR diff"
-
-    # Get existing comments/reviews for context
-    local existing_comments
-    existing_comments=$(echo "$pr_json" | jq -r '.comments[] | "**\(.author.login)**: \(.body)"' 2>/dev/null | head -20)
-    
-    local existing_reviews
-    existing_reviews=$(echo "$pr_json" | jq -r '.reviews[] | "**\(.author.login)** (\(.state)): \(.body // "No comment")"' 2>/dev/null | head -10)
-
-    # Build the review prompt
+    # Prepare review prompt
     local review_prompt
-    review_prompt="Review this pull request and post a review comment.
+    review_prompt="You are reviewing a GitHub Pull Request.
 
-## PR Information
-- **URL**: ${pr_url}
-- **Repository**: ${repo_path}
-- **PR Number**: ${pr_number}
-- **Title**: ${pr_title}
-- **Author**: ${pr_author}
-- **Changes**: +${pr_additions} -${pr_deletions}
+## PR Details
 
-## PR Description
-$(echo "$pr_json" | jq -r '.body // "No description provided"')
+**Title**: ${pr_title}
+**Author**: ${pr_author}
+**URL**: ${pr_url}
+**Changes**: +${pr_additions}/-${pr_deletions} lines
 
-## Changed Files
-$(echo "$pr_json" | jq -r '.files[].path')
+## Your Task
 
-## Existing Comments
-${existing_comments:-"No comments yet"}
+1. Analyze the PR diff and understand the changes
+2. Review for code quality, bugs, and improvements
+3. Post a structured review comment using the gh CLI
 
-## Existing Reviews
-${existing_reviews:-"No reviews yet"}
-
-## Diff
-\`\`\`diff
-${pr_diff}
-\`\`\`
-
-## Instructions
-
-1. Analyze the changes thoroughly
-2. Identify code quality issues and improvement suggestions
-3. Determine your verdict (Approve / Request Changes / Comment)
-4. Post your review using:
+Run this command now to start your review:
 
 \`\`\`bash
-gh pr review ${pr_number} --repo ${repo_path} --comment --body \"\$(cat <<'EOF'
-## Code Review
+opencode run --command '/review-pr' '${pr_url}'
+\`\`\`"
 
-### Code Quality Issues
-- List specific issues found (reference file:line)
-
-### Improvement Suggestions
-- Concrete suggestions for improvement
-
-### Verdict: **[Approve/Request Changes/Comment]**
-
-> To address issues, run: \\\`aid ${pr_url}\\\`
-> When ready to merge, comment: \\\`LGTM\\\`
-EOF
-)\"
-\`\`\`
-
-Remember: You are in READ-ONLY mode. Do NOT edit files or create commits."
-
-    # Dry run check
-    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
-        log_warn "Dry run mode - not executing"
-        echo ""
-        echo "Would run: opencode --agent review --prompt \"...\""
-        return 0
+    # Run OpenCode with review agent
+    log_info "Starting code review..."
+    
+    if [[ "$interactive_mode" == "true" ]]; then
+        # Interactive TUI mode
+        opencode --agent review --prompt "$review_prompt"
+    else
+        # Non-interactive mode (existing behavior)
+        opencode run --agent review --prompt "$review_prompt" 2>/dev/null
     fi
-
-    log_info "Starting review agent..."
-    echo ""
-
-    # Run OpenCode with the review agent (auto-approve since it's read-only)
-    opencode --agent review --prompt "$review_prompt" --yes
 
     log_success "PR review completed"
 }
@@ -688,8 +714,8 @@ Begin working on this task now."
 
     cd "$worktree_path"
 
-    # Run OpenCode with the dispatch agent (interactive TUI)
-    opencode --agent dispatch --prompt "$task_prompt"
+    # Run OpenCode in non-interactive mode with the dispatch agent
+    opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." "$task_prompt" 2>/dev/null
 
     log_success "AI dispatch completed"
 }
@@ -729,27 +755,38 @@ usage() {
 ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
-    aid <github-issue-url>      Work on a GitHub issue
-    aid <github-pr-url>         Work on a GitHub PR (implement requested changes)
-    aid "task description"      Work on a plain text task
-    aid review <pr-url>         Review a PR and post feedback (read-only)
+    aid                         Open OpenCode TUI interactively for user to provide task
+    aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+    aid <github-pr-url>         Work on a GitHub PR (implement requested changes, background)
+    aid "task description"      Work on a plain text task (runs in background, no TUI)
+    aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
     aid list                    List active dispatch sessions
     aid cleanup [--force]       Clean up orphaned sessions
     aid resume <session-id>     Resume a previous session
     aid help                    Show this help message
     aid --version               Show version information
 
+${BOLD}MODES${NC}
+    ${BOLD}Interactive Mode${NC}   - Opens OpenCode TUI with guided prompts
+    ${BOLD}Direct Mode${NC}        - Runs task in background without TUI interface
+
 ${BOLD}EXAMPLES${NC}
-    # Work on a GitHub issue
+    # Interactive mode - opens OpenCode TUI with initial prompt
+    aid
+
+    # Direct mode - work on a GitHub issue (background execution)
     aid https://github.com/user/repo/issues/123
 
-    # Work on a GitHub PR (fix requested changes)
+    # Work on a GitHub PR (fix requested changes, background)
     aid https://github.com/user/repo/pull/456
 
-    # Review a PR without making changes
+    # Review a PR without making changes (background)
     aid review https://github.com/user/repo/pull/456
 
-    # Work on a custom task
+    # Review a PR interactively with TUI
+    aid review --interactive https://github.com/user/repo/pull/456
+
+    # Direct mode - work on a custom task (background execution)  
     aid "Add dark mode toggle to settings page"
 
     # List all sessions
@@ -801,8 +838,8 @@ main() {
 
     case "$cmd" in
         "")
-            usage
-            exit 0
+            # Interactive mode - open OpenCode with initial prompt
+            interactive_dispatch
             ;;
         help|--help|-h)
             usage
@@ -830,9 +867,23 @@ main() {
             ;;
         review)
             if [[ -z "${2:-}" ]]; then
-                die "Usage: aid review <pr-url>"
+                die "Usage: aid review [--interactive] <pr-url>"
             fi
-            review_pr "$2"
+            local interactive_flag="false"
+            local pr_url=""
+            
+            # Parse arguments for review command
+            if [[ "$2" == "--interactive" || "$2" == "-i" ]]; then
+                interactive_flag="true"
+                if [[ -z "${3:-}" ]]; then
+                    die "Usage: aid review --interactive <pr-url>"
+                fi
+                pr_url="$3"
+            else
+                pr_url="$2"
+            fi
+            
+            review_pr "$pr_url" "$interactive_flag"
             ;;
         *)
             # Assume it's a task description or URL
