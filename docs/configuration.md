@@ -18,7 +18,7 @@ Edit `~/.config/opencode/agents/dispatch.md` to customize the agent behavior.
 
 ```yaml
 ---
-model: anthropic/claude-sonnet-4-20250514  # Change this
+model: github-copilot/claude-sonnet-4  # Change this
 temperature: 0.3
 ---
 ```
