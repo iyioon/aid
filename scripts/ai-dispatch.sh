@@ -156,7 +156,7 @@ validate_github_url_repo() {
     fi
 
     # Compare repo paths (case-insensitive)
-    if [[ "${url_repo,,}" != "${current_repo,,}" ]]; then
+    if [[ "$(echo "$url_repo" | tr '[:upper:]' '[:lower:]')" != "$(echo "$current_repo" | tr '[:upper:]' '[:lower:]')" ]]; then
         log_error "Repository mismatch!"
         log_error "  URL points to:    ${url_repo}"
         log_error "  Current repo is:  ${current_repo}"
