@@ -450,47 +450,14 @@ interactive_dispatch() {
     log_info "Repository: $source_repo"
     log_info "Target branch for PR: $default_branch"
 
-    # Prepare the initial prompt that waits for user input
+    # Prepare the initial prompt - minimal context, agent knows the workflow
     local initial_prompt
-    initial_prompt="Welcome! I'm ready to help you with any development task.
+    initial_prompt="## Context
 
-## What would you like me to work on?
+- Repository: $source_repo
+- Target branch: $default_branch
 
-Please describe your task in detail. I can help you with:
-
-- **New Features**: Add functionality to your application
-- **Bug Fixes**: Resolve issues and problems
-- **Refactoring**: Improve code structure and organization  
-- **Documentation**: Update README files, add code comments
-- **Testing**: Write unit tests, integration tests
-- **Configuration**: Set up build tools, CI/CD, etc.
-
-## Examples of good task descriptions:
-
-- \"Add a dark mode toggle to the settings page\"
-- \"Fix the bug where users can't submit forms with special characters\"
-- \"Refactor the authentication module to use JWT tokens\"
-- \"Add input validation to the user registration form\"
-- \"Write unit tests for the payment processing service\"
-
-## Repository Information
-
-- **Current repository**: $source_repo
-- **Target branch for PR**: $default_branch
-- **Working directory**: $(pwd)
-
-**Instructions**: Once you provide your task description, I'll:
-1. Analyze the requirements carefully
-2. Plan the implementation approach  
-3. Make the necessary changes
-4. Write/update tests if applicable
-5. Commit changes with clear messages
-6. Self-review my work
-7. Create a pull request
-
-**Please describe what you'd like me to work on:**
-
-After you provide your initial task description, I'll review it and ask if you need any clarification or if there are additional requirements I should know about before I begin working."
+What would you like me to work on?"
 
     # Change to source repo and run OpenCode with interactive TUI
     cd "$source_repo"
@@ -534,28 +501,13 @@ review_pr() {
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
-    # Prepare review prompt
+    # Prepare review prompt - minimal context, agent knows the workflow
     local review_prompt
-    review_prompt="You are reviewing a GitHub Pull Request.
+    review_prompt="Review this PR: ${pr_url}
 
-## PR Details
-
-**Title**: ${pr_title}
-**Author**: ${pr_author}
-**URL**: ${pr_url}
-**Changes**: +${pr_additions}/-${pr_deletions} lines
-
-## Your Task
-
-1. Analyze the PR diff and understand the changes
-2. Review for code quality, bugs, and improvements
-3. Post a structured review comment using the gh CLI
-
-Run this command now to start your review:
-
-\`\`\`bash
-opencode run --command '/review-pr' '${pr_url}'
-\`\`\`"
+- Title: ${pr_title}
+- Author: ${pr_author}
+- Changes: +${pr_additions}/-${pr_deletions} lines"
 
     # Run OpenCode with review agent
     log_info "Starting code review..."
@@ -696,32 +648,16 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     log_success "Worktree created successfully"
 
-    # Prepare the task prompt
+    # Prepare the task prompt - just the task and context, agent already knows the workflow
     local task_prompt
-    task_prompt="You are working on the following task in an isolated git worktree.
-
-## Task Description
+    task_prompt="## Task
 
 ${task_description}
 
-## Instructions
+## Context
 
-1. Analyze the task requirements carefully
-2. Plan your implementation approach
-3. Implement the changes systematically
-4. Write/update tests if applicable
-5. Commit your changes with clear, conventional commit messages (feat:, fix:, docs:, etc.)
-6. Self-review your work for quality and completeness
-7. Create a pull request against the '${default_branch}' branch
-
-## Important
-
-- You are in worktree: ${worktree_path}
-- Target branch for PR: ${default_branch}
-- Make atomic commits as you progress
-- If you encounter blockers, document them in the PR description
-
-Begin working on this task now."
+- Worktree: ${worktree_path}
+- Target branch: ${default_branch}"
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."
