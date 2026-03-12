@@ -93,9 +93,15 @@ sanitize_branch_name() {
 # ==============================================================================
 
 # Check if input looks like a GitHub issue URL
-is_github_url() {
+is_github_issue_url() {
     local input="$1"
     [[ "$input" =~ ^https?://github\.com/[^/]+/[^/]+/issues/[0-9]+$ ]]
+}
+
+# Check if input looks like a GitHub PR URL
+is_github_pr_url() {
+    local input="$1"
+    [[ "$input" =~ ^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+$ ]]
 }
 
 # Extract issue number from GitHub URL
@@ -406,6 +412,125 @@ list_sessions() {
 }
 
 # ==============================================================================
+# PR Review (Read-Only)
+# ==============================================================================
+
+review_pr() {
+    local pr_url="$1"
+
+    # Validate it's a PR URL (not issue)
+    if ! is_github_pr_url "$pr_url"; then
+        die "Invalid PR URL. Expected: https://github.com/owner/repo/pull/123"
+    fi
+
+    local repo_path pr_number
+    repo_path=$(echo "$pr_url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
+    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+
+    log_info "Reviewing PR #${pr_number} in ${repo_path}..."
+
+    # Fetch PR details
+    local pr_json
+    pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,additions,deletions,commits,author,comments,reviews 2>/dev/null) ||
+        die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
+
+    local pr_title pr_author pr_additions pr_deletions
+    pr_title=$(echo "$pr_json" | jq -r '.title')
+    pr_author=$(echo "$pr_json" | jq -r '.author.login')
+    pr_additions=$(echo "$pr_json" | jq -r '.additions')
+    pr_deletions=$(echo "$pr_json" | jq -r '.deletions')
+
+    log_info "PR: ${pr_title}"
+    log_info "Author: ${pr_author}"
+    log_info "Changes: +${pr_additions} -${pr_deletions}"
+
+    # Get the diff
+    log_info "Fetching diff..."
+    local pr_diff
+    pr_diff=$(gh pr diff "$pr_number" --repo "$repo_path" 2>/dev/null) ||
+        die "Failed to fetch PR diff"
+
+    # Get existing comments/reviews for context
+    local existing_comments
+    existing_comments=$(echo "$pr_json" | jq -r '.comments[] | "**\(.author.login)**: \(.body)"' 2>/dev/null | head -20)
+    
+    local existing_reviews
+    existing_reviews=$(echo "$pr_json" | jq -r '.reviews[] | "**\(.author.login)** (\(.state)): \(.body // "No comment")"' 2>/dev/null | head -10)
+
+    # Build the review prompt
+    local review_prompt
+    review_prompt="Review this pull request and post a review comment.
+
+## PR Information
+- **URL**: ${pr_url}
+- **Repository**: ${repo_path}
+- **PR Number**: ${pr_number}
+- **Title**: ${pr_title}
+- **Author**: ${pr_author}
+- **Changes**: +${pr_additions} -${pr_deletions}
+
+## PR Description
+$(echo "$pr_json" | jq -r '.body // "No description provided"')
+
+## Changed Files
+$(echo "$pr_json" | jq -r '.files[].path')
+
+## Existing Comments
+${existing_comments:-"No comments yet"}
+
+## Existing Reviews
+${existing_reviews:-"No reviews yet"}
+
+## Diff
+\`\`\`diff
+${pr_diff}
+\`\`\`
+
+## Instructions
+
+1. Analyze the changes thoroughly
+2. Identify code quality issues and improvement suggestions
+3. Determine your verdict (Approve / Request Changes / Comment)
+4. Post your review using:
+
+\`\`\`bash
+gh pr review ${pr_number} --repo ${repo_path} --comment --body \"\$(cat <<'EOF'
+## Code Review
+
+### Code Quality Issues
+- List specific issues found (reference file:line)
+
+### Improvement Suggestions
+- Concrete suggestions for improvement
+
+### Verdict: **[Approve/Request Changes/Comment]**
+
+> To address issues, run: \\\`aid ${pr_url}\\\`
+> When ready to merge, comment: \\\`LGTM\\\`
+EOF
+)\"
+\`\`\`
+
+Remember: You are in READ-ONLY mode. Do NOT edit files or create commits."
+
+    # Dry run check
+    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
+        log_warn "Dry run mode - not executing"
+        echo ""
+        echo "Would run: opencode --agent review --prompt \"...\""
+        return 0
+    fi
+
+    log_info "Starting review agent..."
+    echo ""
+
+    # Run OpenCode with the review agent (auto-approve since it's read-only)
+    opencode --agent review --prompt "$review_prompt" --yes
+
+    log_success "PR review completed"
+}
+
+# ==============================================================================
 # Main Dispatch Logic
 # ==============================================================================
 
@@ -424,8 +549,8 @@ dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
-    # Parse input - GitHub issue or plain text
-    if is_github_url "$input"; then
+    # Parse input - GitHub issue, PR, or plain text
+    if is_github_issue_url "$input"; then
         task_type="github_issue"
         task_source="$input"
 
@@ -446,6 +571,34 @@ Labels: $(echo "$issue_json" | jq -r '.labels | map(.name) | join(", ") // "none
 Source: $input"
 
         log_info "Issue: #${issue_number} - ${issue_title}"
+    elif is_github_pr_url "$input"; then
+        task_type="github_pr"
+        task_source="$input"
+
+        local repo_path pr_number
+        repo_path=$(echo "$input" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
+        pr_number=$(echo "$input" | grep -oE '[0-9]+$')
+
+        log_info "Fetching PR #${pr_number} details..."
+
+        local pr_json pr_title
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files 2>/dev/null) ||
+            die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
+        pr_title=$(echo "$pr_json" | jq -r '.title')
+
+        branch_name="ai/pr-${pr_number}"
+        task_description="GitHub PR #${pr_number}: ${pr_title}
+
+$(echo "$pr_json" | jq -r '.body // "No description provided"')
+
+Changed files:
+$(echo "$pr_json" | jq -r '.files[].path' | head -20)
+
+Source: $input
+
+Review the PR comments and requested changes, then implement the necessary fixes."
+
+        log_info "PR: #${pr_number} - ${pr_title}"
     else
         task_type="plain_text"
         task_source="cli"
@@ -577,7 +730,9 @@ ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
     aid <github-issue-url>      Work on a GitHub issue
+    aid <github-pr-url>         Work on a GitHub PR (implement requested changes)
     aid "task description"      Work on a plain text task
+    aid review <pr-url>         Review a PR and post feedback (read-only)
     aid list                    List active dispatch sessions
     aid cleanup [--force]       Clean up orphaned sessions
     aid resume <session-id>     Resume a previous session
@@ -588,6 +743,12 @@ ${BOLD}EXAMPLES${NC}
     # Work on a GitHub issue
     aid https://github.com/user/repo/issues/123
 
+    # Work on a GitHub PR (fix requested changes)
+    aid https://github.com/user/repo/pull/456
+
+    # Review a PR without making changes
+    aid review https://github.com/user/repo/pull/456
+
     # Work on a custom task
     aid "Add dark mode toggle to settings page"
 
@@ -596,6 +757,12 @@ ${BOLD}EXAMPLES${NC}
 
     # Clean up orphaned worktrees
     aid cleanup --force
+
+${BOLD}WORKFLOW${NC}
+    1. AI creates PR via dispatch    -> PR opened
+    2. You run: aid review <pr-url>  -> AI posts review comment
+    3. If issues found:              -> Run: aid <pr-url> to fix
+    4. When satisfied:               -> Comment "LGTM" to merge
 
 ${BOLD}ENVIRONMENT${NC}
     AID_DEBUG=1       Enable debug output
@@ -660,6 +827,12 @@ main() {
                 die "Usage: aid resume <session-id>"
             fi
             resume_session "$2"
+            ;;
+        review)
+            if [[ -z "${2:-}" ]]; then
+                die "Usage: aid review <pr-url>"
+            fi
+            review_pr "$2"
             ;;
         *)
             # Assume it's a task description or URL
