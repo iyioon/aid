@@ -450,20 +450,11 @@ interactive_dispatch() {
     log_info "Repository: $source_repo"
     log_info "Target branch for PR: $default_branch"
 
-    # Prepare the initial prompt - minimal context, agent knows the workflow
-    local initial_prompt
-    initial_prompt="## Context
-
-- Repository: $source_repo
-- Target branch: $default_branch
-
-What would you like me to work on?"
-
     # Change to source repo and run OpenCode with interactive TUI
     cd "$source_repo"
     
-    # Run OpenCode with the dispatch agent in interactive TUI mode
-    opencode --agent dispatch --prompt "$initial_prompt"
+    # Run OpenCode with the dispatch agent in interactive TUI mode (no prompt injection)
+    opencode --agent dispatch
 
     log_success "Interactive session completed"
 }
