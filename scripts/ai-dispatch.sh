@@ -3,6 +3,7 @@
 # aid - Autonomous AI workflow for OpenCode
 #
 # Usage:
+#   aid                         Open OpenCode interactively for user to provide task
 #   aid <github-issue-url>      Work on a GitHub issue
 #   aid "task description"      Work on a plain text task
 #   aid list                    List active dispatch sessions
@@ -406,6 +407,76 @@ list_sessions() {
 }
 
 # ==============================================================================
+# Interactive Mode
+# ==============================================================================
+
+interactive_dispatch() {
+    local source_repo
+
+    # Get current repo path
+    source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not in a git repository"
+
+    # Get the default branch (main or master)
+    local default_branch
+    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+    log_debug "Source repo: $source_repo"
+    log_debug "Default branch: $default_branch"
+
+    log_info "Starting interactive OpenCode session..."
+    log_info "Repository: $source_repo"
+    log_info "Target branch for PR: $default_branch"
+
+    # Prepare the initial prompt that waits for user input
+    local initial_prompt
+    initial_prompt="Welcome! I'm ready to help you with any development task.
+
+## What would you like me to work on?
+
+Please describe your task in detail. I can help you with:
+
+- **New Features**: Add functionality to your application
+- **Bug Fixes**: Resolve issues and problems
+- **Refactoring**: Improve code structure and organization  
+- **Documentation**: Update README files, add code comments
+- **Testing**: Write unit tests, integration tests
+- **Configuration**: Set up build tools, CI/CD, etc.
+
+## Examples of good task descriptions:
+
+- \"Add a dark mode toggle to the settings page\"
+- \"Fix the bug where users can't submit forms with special characters\"
+- \"Refactor the authentication module to use JWT tokens\"
+- \"Add input validation to the user registration form\"
+- \"Write unit tests for the payment processing service\"
+
+## Repository Information
+
+- **Current repository**: $source_repo
+- **Target branch for PR**: $default_branch
+- **Working directory**: $(pwd)
+
+**Instructions**: Once you provide your task description, I'll:
+1. Analyze the requirements carefully
+2. Plan the implementation approach  
+3. Make the necessary changes
+4. Write/update tests if applicable
+5. Commit changes with clear messages
+6. Self-review my work
+7. Create a pull request
+
+**Please describe what you'd like me to work on:**"
+
+    # Change to source repo and run OpenCode with initial prompt
+    cd "$source_repo"
+    
+    # Run OpenCode with the dispatch agent (interactive TUI)
+    opencode --agent dispatch --prompt "$initial_prompt"
+
+    log_success "Interactive session completed"
+}
+
+# ==============================================================================
 # Main Dispatch Logic
 # ==============================================================================
 
@@ -576,6 +647,7 @@ usage() {
 ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
+    aid                         Open OpenCode interactively for user to provide task
     aid <github-issue-url>      Work on a GitHub issue
     aid "task description"      Work on a plain text task
     aid list                    List active dispatch sessions
@@ -585,6 +657,9 @@ ${BOLD}USAGE${NC}
     aid --version               Show version information
 
 ${BOLD}EXAMPLES${NC}
+    # Interactive mode - opens OpenCode with initial prompt
+    aid
+
     # Work on a GitHub issue
     aid https://github.com/user/repo/issues/123
 
@@ -634,8 +709,8 @@ main() {
 
     case "$cmd" in
         "")
-            usage
-            exit 0
+            # Interactive mode - open OpenCode with initial prompt
+            interactive_dispatch
             ;;
         help|--help|-h)
             usage
