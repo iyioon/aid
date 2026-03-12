@@ -723,7 +723,7 @@ Begin working on this task now."
         opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." "$task_prompt" 2>/dev/null
     else
         # Interactive TUI mode (default)
-        opencode --agent dispatch --prompt "$task_prompt"
+        opencode --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." --prompt "$task_prompt"
     fi
 
     log_success "AI dispatch completed"
@@ -952,6 +952,9 @@ main() {
         background_mode="true"
         shift
         cmd="${1:-}"
+        if [[ -z "$cmd" ]]; then
+            die "Usage: aid --background <task|url>"
+        fi
     fi
 
     case "$cmd" in
