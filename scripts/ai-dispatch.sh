@@ -640,6 +640,8 @@ Source: $input"
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
         pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
+        [[ -z "$pr_branch_name" || "$pr_branch_name" == "null" ]] &&
+            die "Could not determine PR branch name from PR #${pr_number}"
 
         # Use the PR's actual branch instead of creating a new aid/ branch
         branch_name="$pr_branch_name"
@@ -679,7 +681,11 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     # Fetch latest changes
     log_info "Fetching latest changes..."
-    git fetch origin 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    if [[ "$task_type" == "github_pr" ]]; then
+        git fetch origin "$default_branch" "$branch_name" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    else
+        git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    fi
 
     # Create worktree - use existing PR branch or create new branch
     log_info "Creating worktree..."
@@ -691,7 +697,7 @@ Review the PR comments and requested changes, then implement the necessary fixes
                 die "Failed to create worktree for PR branch: $branch_name"
         else
             git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
-                die "Failed to create worktree for PR branch: $branch_name"
+                die "Failed to create worktree for PR branch: $branch_name. Ensure 'origin/${branch_name}' exists (run: git fetch origin ${branch_name})"
         fi
     else
         # For issues/text tasks: create a new aid/ branch off the default branch
