@@ -250,8 +250,8 @@ Active Development Sessions
 ───────────────────────────────────────────────────────────────────────────────────────
 SESSION              STATUS       BRANCH                              CREATED
 ───────────────────────────────────────────────────────────────────────────────────────
-20250312-143022-1234 running      aid/issue-123                       2025-03-12T14:30:22Z
-20250312-150145-5678 completed    aid/task-add-dark-mode-150145       2025-03-12T15:01:45Z
+20250312-143022-1234 running      aid/20250312-143022-1234            2025-03-12T14:30:22Z
+20250312-150145-5678 completed    aid/20250312-150145-5678            2025-03-12T15:01:45Z
 ───────────────────────────────────────────────────────────────────────────────────────
 Total: 2 session(s)
 ```
@@ -281,8 +281,8 @@ Session: 20250312-143022-1234
 Status:        running
 Created:       2025-03-12T14:30:22Z
 Type:          github_issue
-Branch:        aid/issue-123
-Worktree:      /Users/you/.config/opencode/worktrees/aid-issue-123
+Branch:        aid/20250312-143022-1234
+Worktree:      /Users/you/.config/opencode/worktrees/20250312-143022-1234
 
 Task Description
 ─────────────────────────────────────────────

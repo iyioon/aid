@@ -118,8 +118,8 @@ Session state is stored in JSON:
 ```json
 {
   "session_id": "20250312-143022-1234",
-  "branch_name": "aid/issue-123",
-  "worktree_path": "/Users/you/.config/opencode/worktrees/aid-issue-123",
+  "branch_name": "aid/20250312-143022-1234",
+  "worktree_path": "/Users/you/.config/opencode/worktrees/20250312-143022-1234",
   "task_type": "github_issue",
   "task_source": "https://github.com/owner/repo/issues/123",
   "task_description": "...",

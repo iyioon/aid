@@ -39,7 +39,7 @@ Clone this repository directly into your OpenCode configuration directory:
 mkdir -p ~/.config/opencode
 
 # Clone the repository
-git clone https://github.com/yourusername/aid.git ~/.config/opencode
+git clone https://github.com/iyioon/aid.git ~/.config/opencode
 ```
 
 > **Note**: If you already have an `opencode` configuration, you may need to back it up or merge these files.
@@ -99,6 +99,7 @@ rm ~/.local/bin/aid
 rm -rf ~/.config/opencode/scripts
 rm -rf ~/.config/opencode/agents
 rm -rf ~/.config/opencode/commands
+rm -rf ~/.config/opencode/skills
 rm -rf ~/.config/opencode/dispatch
 rm -rf ~/.config/opencode/worktrees
 rm -rf ~/.config/opencode/docs
