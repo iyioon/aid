@@ -682,7 +682,8 @@ Review the PR comments and requested changes, then implement the necessary fixes
     # Fetch latest changes
     log_info "Fetching latest changes..."
     if [[ "$task_type" == "github_pr" ]]; then
-        git fetch origin "$default_branch" "$branch_name" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+        git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch default branch, continuing anyway"
+        git fetch origin "$branch_name" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
     else
         git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
     fi
@@ -691,10 +692,15 @@ Review the PR comments and requested changes, then implement the necessary fixes
     log_info "Creating worktree..."
     if [[ "$task_type" == "github_pr" ]]; then
         # For PR tasks: check out the existing PR branch so fixes go directly to the PR
-        # First try using existing local branch, then create tracking branch from remote
         if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
+            # Sync local branch to remote to avoid stale commits
+            git branch -f "$branch_name" "origin/${branch_name}" ||
+                log_warn "Could not reset local '${branch_name}' to origin; it may be stale"
             git worktree add "$worktree_path" "$branch_name" ||
                 die "Failed to create worktree for PR branch: $branch_name"
+            # Ensure upstream tracking is configured so the agent's push lands on the PR
+            git -C "$worktree_path" branch --set-upstream-to="origin/${branch_name}" "$branch_name" ||
+                log_warn "Could not set upstream tracking for '${branch_name}'"
         else
             git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
                 die "Failed to create worktree for PR branch: $branch_name. Ensure 'origin/${branch_name}' exists (run: git fetch origin ${branch_name})"
