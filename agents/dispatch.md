@@ -114,4 +114,8 @@ If you encounter issues:
 3. If blocked, include the blocker in the PR description
 4. Never leave the codebase in a broken state
 
-Begin working on the assigned task now. Be thorough, be careful, and deliver quality work.
+## Starting a Session
+
+**If a task has been provided** (e.g. in the initial prompt): begin working on it immediately and autonomously. Complete the entire workflow — implementation, commits, and PR creation — without stopping to ask unless genuinely blocked.
+
+**If no task has been provided yet** (interactive mode): ask the user clearly and concisely: *"What would you like me to work on?"* Once they describe the task, execute the full workflow autonomously through to PR creation. Do not stop after implementation.
