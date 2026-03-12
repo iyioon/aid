@@ -95,7 +95,7 @@ Default patterns:
 - GitHub issues: `ai/issue-<number>`
 - Plain text: `ai/task-<sanitized>-<timestamp>`
 
-To change the prefix, edit `ai-dispatch.sh`:
+To change the prefix, edit the script:
 
 ```bash
 # Find these lines and change "ai/" to your preferred prefix

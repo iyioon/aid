@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# ai-dispatch - Autonomous AI workflow for OpenCode
+# aid - Autonomous AI workflow for OpenCode
 #
 # Usage:
-#   ai-dispatch <github-issue-url>      Work on a GitHub issue
-#   ai-dispatch "task description"      Work on a plain text task
-#   ai-dispatch list                    List active dispatch sessions
-#   ai-dispatch cleanup [--force]       Clean up orphaned sessions
-#   ai-dispatch resume <session-id>     Resume a previous session
+#   aid <github-issue-url>      Work on a GitHub issue
+#   aid "task description"      Work on a plain text task
+#   aid list                    List active dispatch sessions
+#   aid cleanup [--force]       Clean up orphaned sessions
+#   aid resume <session-id>     Resume a previous session
 #
 # Environment:
-#   AI_DISPATCH_DEBUG=1                 Enable debug output
-#   AI_DISPATCH_DRY_RUN=1               Show what would be done without executing
+#   AID_DEBUG=1                 Enable debug output
+#   AID_DRY_RUN=1               Show what would be done without executing
 
 set -euo pipefail
 
@@ -59,7 +59,7 @@ log_error() {
 }
 
 log_debug() {
-    if [[ "${AI_DISPATCH_DEBUG:-}" == "1" ]]; then
+    if [[ "${AID_DEBUG:-}" == "1" ]]; then
         printf '%b\n' "${CYAN}[debug]${NC} $*" >&2
     fi
 }
@@ -338,7 +338,7 @@ cleanup_orphans() {
     elif [[ $found -eq 0 ]]; then
         log_success "No orphaned sessions found"
     else
-        log_info "Run 'ai-dispatch cleanup --force' to remove these $found session(s)"
+        log_info "Run 'aid cleanup --force' to remove these $found session(s)"
     fi
 }
 
@@ -460,7 +460,7 @@ Source: $input"
 
     # Check for existing session with same branch
     if check_existing_session "$branch_name"; then
-        die "A session is already working on this branch. Use 'ai-dispatch list' to see active sessions."
+        die "A session is already working on this branch. Use 'aid list' to see active sessions."
     fi
 
     # Generate session ID
@@ -472,7 +472,7 @@ Source: $input"
     log_info "Worktree: $worktree_path"
 
     # Dry run check
-    if [[ "${AI_DISPATCH_DRY_RUN:-}" == "1" ]]; then
+    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
         log_warn "Dry run mode - not executing"
         return 0
     fi
@@ -573,33 +573,33 @@ resume_session() {
 
 usage() {
     cat <<EOF
-${BOLD}ai-dispatch${NC} - Autonomous AI workflow for OpenCode
+${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
-    ai-dispatch <github-issue-url>      Work on a GitHub issue
-    ai-dispatch "task description"      Work on a plain text task
-    ai-dispatch list                    List active dispatch sessions
-    ai-dispatch cleanup [--force]       Clean up orphaned sessions
-    ai-dispatch resume <session-id>     Resume a previous session
-    ai-dispatch help                    Show this help message
-    ai-dispatch --version               Show version information
+    aid <github-issue-url>      Work on a GitHub issue
+    aid "task description"      Work on a plain text task
+    aid list                    List active dispatch sessions
+    aid cleanup [--force]       Clean up orphaned sessions
+    aid resume <session-id>     Resume a previous session
+    aid help                    Show this help message
+    aid --version               Show version information
 
 ${BOLD}EXAMPLES${NC}
     # Work on a GitHub issue
-    ai-dispatch https://github.com/user/repo/issues/123
+    aid https://github.com/user/repo/issues/123
 
     # Work on a custom task
-    ai-dispatch "Add dark mode toggle to settings page"
+    aid "Add dark mode toggle to settings page"
 
     # List all sessions
-    ai-dispatch list
+    aid list
 
     # Clean up orphaned worktrees
-    ai-dispatch cleanup --force
+    aid cleanup --force
 
 ${BOLD}ENVIRONMENT${NC}
-    AI_DISPATCH_DEBUG=1       Enable debug output
-    AI_DISPATCH_DRY_RUN=1     Show what would be done without executing
+    AID_DEBUG=1       Enable debug output
+    AID_DRY_RUN=1     Show what would be done without executing
 
 ${BOLD}REQUIREMENTS${NC}
     - git (with worktree support)
@@ -642,7 +642,7 @@ main() {
             exit 0
             ;;
         version|--version|-v)
-            echo "ai-dispatch version ${VERSION}"
+            echo "aid version ${VERSION}"
             exit 0
             ;;
         list|ls)
@@ -657,7 +657,7 @@ main() {
             ;;
         resume)
             if [[ -z "${2:-}" ]]; then
-                die "Usage: ai-dispatch resume <session-id>"
+                die "Usage: aid resume <session-id>"
             fi
             resume_session "$2"
             ;;

@@ -9,7 +9,7 @@
 cd /path/to/your/project
 
 # Dispatch with a GitHub issue URL
-ai-dispatch https://github.com/owner/repo/issues/123
+aid https://github.com/owner/repo/issues/123
 ```
 
 The agent will:
@@ -25,10 +25,10 @@ The agent will:
 
 ```bash
 # Describe what you want done
-ai-dispatch "Add a dark mode toggle to the settings page"
+aid "Add a dark mode toggle to the settings page"
 
 # More detailed descriptions work better
-ai-dispatch "Refactor the user authentication module to use JWT tokens instead of session cookies. Update all related tests."
+aid "Refactor the user authentication module to use JWT tokens instead of session cookies. Update all related tests."
 ```
 
 ## Managing Sessions
@@ -36,18 +36,18 @@ ai-dispatch "Refactor the user authentication module to use JWT tokens instead o
 ### List Active Sessions
 
 ```bash
-ai-dispatch list
+aid list
 ```
 
 Output:
 ```
 Active AI Dispatch Sessions
-─────────────────────────────────────────────────────────────────
-SESSION              STATUS          BRANCH                          CREATED
-─────────────────────────────────────────────────────────────────
-20250312-143022-1234 running         ai/issue-123                    2025-03-12T14:30:22Z
-20250312-150145-5678 completed       ai/task-add-dark-mode-150145    2025-03-12T15:01:45Z
-─────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────────────────────
+SESSION              STATUS       BRANCH                              CREATED
+───────────────────────────────────────────────────────────────────────────────────────
+20250312-143022-1234 running      ai/issue-123                        2025-03-12T14:30:22Z
+20250312-150145-5678 completed    ai/task-add-dark-mode-150145        2025-03-12T15:01:45Z
+───────────────────────────────────────────────────────────────────────────────────────
 Total: 2 session(s)
 ```
 
@@ -56,7 +56,7 @@ Total: 2 session(s)
 If you need to continue work on a previous session:
 
 ```bash
-ai-dispatch resume 20250312-143022-1234
+aid resume 20250312-143022-1234
 ```
 
 This opens OpenCode in the existing worktree with conversation history.
@@ -67,22 +67,22 @@ If sessions weren't cleaned up properly (e.g., system crash):
 
 ```bash
 # See orphaned sessions
-ai-dispatch cleanup
+aid cleanup
 
 # Force cleanup
-ai-dispatch cleanup --force
+aid cleanup --force
 ```
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `AI_DISPATCH_DEBUG=1` | Enable verbose debug output |
-| `AI_DISPATCH_DRY_RUN=1` | Show what would happen without executing |
+| `AID_DEBUG=1` | Enable verbose debug output |
+| `AID_DRY_RUN=1` | Show what would happen without executing |
 
 Example:
 ```bash
-AI_DISPATCH_DEBUG=1 ai-dispatch "Add feature X"
+AID_DEBUG=1 aid "Add feature X"
 ```
 
 ## Workflow Details
@@ -134,10 +134,10 @@ It follows a structured workflow:
 
 ```bash
 # Good - specific and actionable
-ai-dispatch "Add input validation to the user registration form. Validate email format, password strength (min 8 chars, 1 uppercase, 1 number), and username uniqueness."
+aid "Add input validation to the user registration form. Validate email format, password strength (min 8 chars, 1 uppercase, 1 number), and username uniqueness."
 
 # Less ideal - vague
-ai-dispatch "Fix the form"
+aid "Fix the form"
 ```
 
 ### Provide Context
@@ -145,7 +145,7 @@ ai-dispatch "Fix the form"
 For complex tasks, include relevant context:
 
 ```bash
-ai-dispatch "Implement rate limiting for the API endpoints. Use Redis for storage. Follow the pattern established in src/middleware/auth.ts. Limit to 100 requests per minute per IP."
+aid "Implement rate limiting for the API endpoints. Use Redis for storage. Follow the pattern established in src/middleware/auth.ts. Limit to 100 requests per minute per IP."
 ```
 
 ### Use GitHub Issues for Complex Tasks

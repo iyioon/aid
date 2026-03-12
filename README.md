@@ -1,4 +1,4 @@
-# AI Dispatch for OpenCode
+# aid - AI Dispatch for OpenCode
 
 Autonomous AI workflow system for OpenCode that handles tasks from start to PR creation.
 
@@ -14,16 +14,16 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 
 ```bash
 # Work on a GitHub issue
-ai-dispatch https://github.com/user/repo/issues/123
+aid https://github.com/user/repo/issues/123
 
 # Work on a plain text task
-ai-dispatch "Add dark mode toggle to settings page"
+aid "Add dark mode toggle to settings page"
 
 # List active sessions
-ai-dispatch list
+aid list
 
 # Clean up orphaned sessions
-ai-dispatch cleanup --force
+aid cleanup --force
 ```
 
 ## Documentation
@@ -31,7 +31,6 @@ ai-dispatch cleanup --force
 - [Installation Guide](docs/installation.md)
 - [Usage Guide](docs/usage.md)
 - [Configuration](docs/configuration.md)
-- [Troubleshooting](docs/troubleshooting.md)
 
 ## How It Works
 

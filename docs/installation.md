@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Before installing ai-dispatch, ensure you have:
+Before installing aid, ensure you have:
 
 1. **Git** (with worktree support - version 2.5+)
    ```bash
@@ -39,17 +39,17 @@ If you're reading this, the installation has already created:
 
 ### 2. Create the symlink
 
-The symlink to `~/.local/bin/ai-dispatch` should already be created. Verify with:
+The symlink to `~/.local/bin/aid` should already be created. Verify with:
 
 ```bash
-which ai-dispatch
+which aid
 ```
 
 If not found, create it manually:
 
 ```bash
 mkdir -p ~/.local/bin
-ln -sf ~/.config/opencode/scripts/ai-dispatch.sh ~/.local/bin/ai-dispatch
+ln -sf ~/.config/opencode/scripts/ai-dispatch.sh ~/.local/bin/aid
 ```
 
 ### 3. Add ~/.local/bin to PATH
@@ -74,7 +74,7 @@ source ~/.zshrc  # or ~/.bashrc
 ### 4. Verify installation
 
 ```bash
-ai-dispatch help
+aid help
 ```
 
 You should see the help message with available commands.
@@ -92,7 +92,7 @@ git pull
 
 ```bash
 # Remove the symlink
-rm ~/.local/bin/ai-dispatch
+rm ~/.local/bin/aid
 
 # Optionally remove all files
 rm -rf ~/.config/opencode/scripts
