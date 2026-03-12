@@ -48,18 +48,21 @@ gh pr create --title "TITLE" --body "BODY"
 **Body Template:**
 ```markdown
 ## Summary
-[Brief description of what this PR accomplishes]
+[1-2 sentence description of what this PR accomplishes]
 
 ## Changes
-- [List specific changes made]
-- [Another change]
+- [Specific change with file reference if helpful]
+- [Another specific change]
+- [One more change]
 
 ## Testing
-[How the changes were tested, or "Manual testing" if no automated tests]
+[How tested: unit tests, integration tests, manual testing, etc.]
 
 ## Related Issues
-[Closes #123 or "N/A" if no related issue]
+[Closes #123 | Fixes #456 | Related to #789 | N/A]
 ```
+
+**Important:** Follow the PR description best practices in the dispatch agent instructions for professional, scannable PR descriptions.
 
 ### Step 5: Confirm Success
 
