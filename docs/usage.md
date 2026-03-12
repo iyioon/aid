@@ -333,6 +333,14 @@ aid cleanup
 aid cleanup --force
 ```
 
+### Clean Up Stale Branches
+
+After merging PRs, remote branches are deleted but local tracking references may remain. To clean them up:
+
+```bash
+git fetch --prune
+```
+
 ---
 
 ## Environment Variables
