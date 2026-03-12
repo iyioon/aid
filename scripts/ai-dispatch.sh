@@ -28,7 +28,6 @@ readonly VERSION="0.1.0"
 readonly OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
 readonly DISPATCH_DIR="${OPENCODE_CONFIG_DIR}/dispatch"
 readonly WORKTREES_DIR="${OPENCODE_CONFIG_DIR}/worktrees"
-readonly SCRIPTS_DIR="${OPENCODE_CONFIG_DIR}/scripts"
 
 # Colors for output (bash 3.2 compatible)
 RED=$(printf '\033[0;31m')
