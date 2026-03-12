@@ -3,18 +3,20 @@
 # aid - Autonomous AI workflow for OpenCode
 #
 # Usage:
-#   aid                         Open OpenCode TUI interactively for user to provide task
-#   aid <github-issue-url>      Work on a GitHub issue (headless, no TUI)
-#   aid <github-pr-url>         Work on a GitHub PR (headless, no TUI)
-#   aid "task description"      Work on a plain text task (headless, no TUI)
-#   aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
-#   aid list                    List active dispatch sessions
+#   aid                              Open OpenCode TUI interactively for user to provide task
+#   aid <github-issue-url>           Work on a GitHub issue (TUI mode)
+#   aid <github-pr-url>              Work on a GitHub PR (TUI mode)
+#   aid "task description"           Work on a plain text task (TUI mode)
+#   aid review <pr-url>              Review a PR and post feedback (TUI mode, read-only)
+#   aid --background <task>          Run task in background (headless, no TUI)
+#   aid -b <github-issue-url>        Short form of --background
+#   aid list                         List active dispatch sessions
 #   aid cleanup [--failed|--all] [--force]  Clean up sessions
-#   aid resume <session-id>     Resume a previous session
+#   aid resume <session-id>          Resume a previous session
 #
 # Environment:
-#   AID_DEBUG=1                 Enable debug output
-#   AID_DRY_RUN=1               Show what would be done without executing
+#   AID_DEBUG=1                      Enable debug output
+#   AID_DRY_RUN=1                    Show what would be done without executing
 
 set -euo pipefail
 
@@ -473,7 +475,7 @@ interactive_dispatch() {
 
 review_pr() {
     local pr_url="$1"
-    local interactive_mode="${2:-false}"
+    local background_mode="${2:-false}"
 
     # Validate it's a PR URL (not issue)
     if ! is_github_pr_url "$pr_url"; then
@@ -511,12 +513,12 @@ review_pr() {
     # Run OpenCode with review agent
     log_info "Starting code review..."
     
-    if [[ "$interactive_mode" == "true" ]]; then
-        # Interactive TUI mode
-        opencode --agent review --prompt "$review_prompt"
-    else
-        # Non-interactive mode (existing behavior)
+    if [[ "$background_mode" == "true" ]]; then
+        # Non-interactive mode (headless/background)
         opencode run --agent review "$review_prompt" 2>/dev/null
+    else
+        # Interactive TUI mode (default)
+        opencode --agent review "$review_prompt"
     fi
 
     log_success "PR review completed"
@@ -528,6 +530,7 @@ review_pr() {
 
 dispatch() {
     local input="$1"
+    local background_mode="${2:-false}"
     local session_id branch_name worktree_path task_type task_source task_description
     local source_repo issue_json
 
@@ -655,8 +658,14 @@ ${task_description}
 
     cd "$worktree_path"
 
-    # Run OpenCode in non-interactive mode with the dispatch agent
-    opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." "$task_prompt" 2>/dev/null
+    # Run OpenCode with the dispatch agent
+    if [[ "$background_mode" == "true" ]]; then
+        # Non-interactive mode (headless/background)
+        opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." "$task_prompt" 2>/dev/null
+    else
+        # Interactive TUI mode (default)
+        opencode --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." --prompt "$task_prompt"
+    fi
 
     log_success "AI dispatch completed"
 }
@@ -792,17 +801,20 @@ usage() {
 ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
-    aid                         Open OpenCode TUI interactively for user to provide task
-    aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
-    aid <github-pr-url>         Work on a GitHub PR (implement requested changes, background)
-    aid "task description"      Work on a plain text task (runs in background, no TUI)
-    aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
-    aid list                    List active dispatch sessions
-    aid view <session-id>       View session details and optionally resume
-    aid cleanup [options]       Clean up sessions (see options below)
-    aid resume <session-id>     Resume a previous session
-    aid help                    Show this help message
-    aid --version               Show version information
+    aid                              Open OpenCode TUI interactively for user to provide task
+    aid <github-issue-url>           Work on a GitHub issue (TUI mode)
+    aid <github-pr-url>              Work on a GitHub PR (implement requested changes, TUI mode)
+    aid "task description"           Work on a plain text task (TUI mode)
+    aid review <pr-url>              Review a PR and post feedback (TUI mode, read-only)
+    aid --background <task>          Run task in background mode (headless, no TUI)
+    aid -b <github-issue-url>        Short form of --background
+    aid review --background <pr-url> Review a PR in background mode
+    aid list                         List active dispatch sessions
+    aid view <session-id>            View session details and optionally resume
+    aid cleanup [options]            Clean up sessions (see options below)
+    aid resume <session-id>          Resume a previous session
+    aid help                         Show this help message
+    aid --version                    Show version information
 
 ${BOLD}CLEANUP OPTIONS${NC}
     --force, -f                 Actually remove sessions (without this, just lists them)
@@ -811,27 +823,34 @@ ${BOLD}CLEANUP OPTIONS${NC}
     (default)                   Clean up orphaned sessions (running but process died)
 
 ${BOLD}MODES${NC}
-    ${BOLD}Interactive Mode${NC}   - Opens OpenCode TUI with guided prompts
-    ${BOLD}Direct Mode${NC}        - Runs task in background without TUI interface
+    ${BOLD}TUI Mode (default)${NC}  - Opens OpenCode TUI with visual interface
+    ${BOLD}Background Mode${NC}     - Runs headless without TUI (use --background or -b)
 
 ${BOLD}EXAMPLES${NC}
     # Interactive mode - opens OpenCode TUI with initial prompt
     aid
 
-    # Direct mode - work on a GitHub issue (background execution)
+    # TUI mode - work on a GitHub issue with visual interface (default)
     aid https://github.com/user/repo/issues/123
 
-    # Work on a GitHub PR (fix requested changes, background)
+    # Background mode - work on a GitHub issue headlessly
+    aid --background https://github.com/user/repo/issues/123
+    aid -b https://github.com/user/repo/issues/123
+
+    # Work on a GitHub PR (fix requested changes, TUI mode)
     aid https://github.com/user/repo/pull/456
 
-    # Review a PR without making changes (background)
+    # Review a PR with TUI (default)
     aid review https://github.com/user/repo/pull/456
 
-    # Review a PR interactively with TUI
-    aid review --interactive https://github.com/user/repo/pull/456
+    # Review a PR in background mode
+    aid review --background https://github.com/user/repo/pull/456
 
-    # Direct mode - work on a custom task (background execution)  
+    # TUI mode - work on a custom task (default)  
     aid "Add dark mode toggle to settings page"
+
+    # Background mode - work on a custom task
+    aid -b "Add dark mode toggle to settings page"
 
     # List all sessions
     aid list
@@ -888,6 +907,18 @@ main() {
 
     # Parse command
     local cmd="${1:-}"
+    local background_mode="false"
+
+    # Check for --background or -b flag at the start
+    if [[ "$cmd" == "--background" || "$cmd" == "-b" ]]; then
+        background_mode="true"
+        shift
+        cmd="${1:-}"
+    fi
+    
+    if [[ "$background_mode" == "true" && -z "$cmd" ]]; then
+        die "Usage: aid --background <task|url>"
+    fi
 
     case "$cmd" in
         "")
@@ -937,27 +968,14 @@ main() {
             ;;
         review)
             if [[ -z "${2:-}" ]]; then
-                die "Usage: aid review [--interactive] <pr-url>"
-            fi
-            local interactive_flag="false"
-            local pr_url=""
-            
-            # Parse arguments for review command
-            if [[ "$2" == "--interactive" || "$2" == "-i" ]]; then
-                interactive_flag="true"
-                if [[ -z "${3:-}" ]]; then
-                    die "Usage: aid review --interactive <pr-url>"
-                fi
-                pr_url="$3"
-            else
-                pr_url="$2"
+                die "Usage: aid review <pr-url>"
             fi
             
-            review_pr "$pr_url" "$interactive_flag"
+            review_pr "$2" "$background_mode"
             ;;
         *)
             # Assume it's a task description or URL
-            dispatch "$cmd"
+            dispatch "$cmd" "$background_mode"
             ;;
     esac
 }
