@@ -1,6 +1,6 @@
 ---
 description: Task orchestrator for autonomous development
-model: github-copilot/claude-sonnet-4.6
+model: github-copilot/claude-opus-4.5
 temperature: 0.3
 permission:
   edit: allow
