@@ -635,10 +635,20 @@ Source: $input"
 
         log_info "Fetching PR #${pr_number} details..."
 
-        local pr_json pr_title
-        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files 2>/dev/null) ||
+        local pr_json pr_title pr_branch_name pr_is_fork
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,headRefName,isCrossRepository 2>/dev/null) ||
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
+        pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
+        [[ -z "$pr_branch_name" || "$pr_branch_name" == "null" ]] &&
+            die "Could not determine PR branch name from PR #${pr_number}"
+        pr_is_fork=$(echo "$pr_json" | jq '.isCrossRepository // false')
+        if [[ "$pr_is_fork" == "true" ]]; then
+            die "Fork PRs are not yet supported. Check out the branch manually and re-run."
+        fi
+
+        # Use the PR's actual branch instead of creating a new aid/ branch
+        branch_name="$pr_branch_name"
 
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
@@ -652,6 +662,7 @@ Source: $input
 Review the PR comments and requested changes, then implement the necessary fixes."
 
         log_info "PR: #${pr_number} - ${pr_title}"
+        log_info "PR branch: ${pr_branch_name}"
     else
         task_type="plain_text"
         task_source="cli"
@@ -674,13 +685,54 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     # Fetch latest changes
     log_info "Fetching latest changes..."
-    git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    if [[ "$task_type" == "github_pr" ]]; then
+        # The default branch is only used as informational context in the task prompt;
+        # the worktree is based entirely on the PR branch, so a stale default branch
+        # cannot affect the work — failure here is intentionally non-fatal.
+        git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch default branch, continuing anyway"
+        git fetch origin "${branch_name}:refs/remotes/origin/${branch_name}" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
+    else
+        git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    fi
 
-    # Create worktree with new branch
+    # Create worktree - use existing PR branch or create new branch
     log_info "Creating worktree..."
-    git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
-        git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
-        die "Failed to create worktree"
+    if [[ "$task_type" == "github_pr" ]]; then
+        # For PR tasks: check out the existing PR branch so fixes go directly to the PR.
+        # If a local branch already exists, validate it is safe to remove before recreating
+        # it as a clean tracking branch from origin.
+        if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
+            # Guard: refuse if the branch is checked out in any linked worktree
+            local worktree_list
+            worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
+            # Skip the first block (main worktree) — we only care about linked worktrees
+            local linked_worktrees
+            linked_worktrees=$(echo "$worktree_list" | awk 'BEGIN{p=0} /^$/{p=1; next} p{print}')
+            if echo "$linked_worktrees" | grep -qxF "branch refs/heads/${branch_name}"; then
+                die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
+            fi
+            # Guard: refuse if local branch has commits not reachable from origin
+            local local_tip merge_base
+            local_tip=$(git rev-parse "refs/heads/${branch_name}") ||
+                die "Could not resolve local branch '${branch_name}'"
+            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}") ||
+                die "Could not determine merge base for '${branch_name}'. Histories may be unrelated."
+            if [[ "$local_tip" != "$merge_base" ]]; then
+                die "Local branch '${branch_name}' has commits not in origin. Aborting to prevent data loss."
+            fi
+            # Safe to remove: local is a strict ancestor of (or equal to) origin
+            git branch -D "$branch_name" ||
+                die "Could not remove local branch '${branch_name}' before recreating it."
+        fi
+        # Create a fresh tracking branch from origin and add the worktree
+        git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
+            die "Failed to create worktree for PR branch '${branch_name}'. Ensure 'origin/${branch_name}' exists."
+    else
+        # For issues/text tasks: create a new aid/ branch off the default branch
+        git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
+            git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
+            die "Failed to create worktree"
+    fi
 
     # Create state file
     local state_file
@@ -698,6 +750,9 @@ Review the PR comments and requested changes, then implement the necessary fixes
     log_success "Worktree created successfully"
 
     # Prepare the task prompt - just the task and context, agent already knows the workflow
+    local extra_context=""
+    [[ "$task_type" == "github_pr" ]] && extra_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
+
     local task_prompt
     task_prompt="## Task
 
@@ -706,7 +761,7 @@ ${task_description}
 ## Context
 
 - Worktree: ${worktree_path}
-- Target branch: ${default_branch}"
+- Target branch: ${default_branch}${extra_context}"
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."
