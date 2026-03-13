@@ -880,7 +880,7 @@ ${pr_diff}
         log_warn "Fork PR detected — skipping worktree; git grep/show will reflect your current branch"
         log_info "Starting code review..."
         cd "$source_repo"
-        opencode --agent review --prompt "$review_prompt"
+        opencode run --agent review "$review_prompt"
     else
         # Fetch the PR branch from origin
         log_info "Fetching PR branch '${pr_branch_name}'..."
@@ -903,7 +903,7 @@ ${pr_diff}
         log_info "Starting code review..."
 
         cd "$worktree_path"
-        opencode --agent review --prompt "$review_prompt"
+        opencode run --agent review "$review_prompt"
     fi
 
     log_success "PR review completed"
@@ -1171,7 +1171,7 @@ ${task_description}
     cd "$worktree_path"
 
     # Run OpenCode with the dispatch agent (TUI mode)
-    opencode --agent dispatch --prompt "$task_prompt"
+    opencode run --agent dispatch "$task_prompt"
 
     log_success "AI dispatch completed"
 }
