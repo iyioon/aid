@@ -1338,7 +1338,7 @@ tasks_list() {
         # If the task is not already marked done, query GitHub to get the real
         # state: branch gone means merged/closed; PR state provides more detail.
         if [[ "$status" != "done" && -n "$task_repo" && "$task_repo" != "null" ]]; then
-            local http_status pr_state=""
+            local http_status="" pr_state=""
             http_status=$(gh api --include \
                 "repos/${task_repo}/branches/${branch_name}" 2>/dev/null \
                 | grep -m1 '^HTTP/' | awk '{print $2}')
@@ -1365,10 +1365,12 @@ tasks_list() {
                 merged_count=$((merged_count + 1))
             elif [[ "$http_status" == "200" && -n "$pr_url" && "$pr_url" != "null" && "$phase" != "done" ]]; then
                 # Branch still exists — enrich with live PR state
-                local pr_number live_pr_state
+                local pr_number="" live_pr_state=""
                 pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
-                live_pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
-                    --jq '.state' 2>/dev/null || echo "")
+                if [[ -n "$pr_number" ]]; then
+                    live_pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
+                        --jq '.state' 2>/dev/null || echo "")
+                fi
                 if [[ "$live_pr_state" == "open" && "$phase" == "research" ]]; then
                     # PR exists but phase wasn't advanced — fix it
                     phase="review"
