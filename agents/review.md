@@ -1,6 +1,7 @@
 ---
 description: Read-only PR review agent - analyzes code and posts review comments
 mode: primary
+model: github-copilot/claude-opus-4.5
 temperature: 0.3
 tools:
   edit: false
