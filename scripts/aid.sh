@@ -329,7 +329,7 @@ update_task_json() {
 
     local tmp
     tmp=$(mktemp)
-    jq --argjson v "$value" ".${key} = \$v" "$tfile" > "$tmp" && mv "$tmp" "$tfile"
+    jq --arg k "$key" --argjson v "$value" 'setpath([$k]; $v)' "$tfile" > "$tmp" && mv "$tmp" "$tfile"
 }
 
 # Update task phase
@@ -339,7 +339,10 @@ update_task_phase() {
     update_task_json "$task_id" "phase" "\"${phase}\""
 }
 
-# Attach a PR number + URL to a task (called after PR creation)
+# Attach a PR number + URL to a task.
+# TODO: Not yet wired up. Placeholder for future auto-advance logic: call this
+#       after a PR is created to record the PR number/URL and move the phase to
+#       "review" automatically.
 update_task_pr() {
     local task_id="$1"
     local pr_number="$2"
@@ -356,7 +359,9 @@ update_task_pr() {
         "$tfile" > "$tmp" && mv "$tmp" "$tfile"
 }
 
-# Mark a task as done
+# Mark a task as done.
+# TODO: Not yet wired up. Placeholder for future auto-advance logic: call this
+#       after a PR is merged to mark the task phase as "done" automatically.
 complete_task() {
     local task_id="$1"
     update_task_json "$task_id" "phase" '"done"'
@@ -1382,6 +1387,12 @@ tasks_edit() {
     if [[ ! -d "$tdir" ]]; then
         die "Task not found: $task_id"
     fi
+
+    # Whitelist valid filenames to prevent path traversal
+    case "$file" in
+        context.md|plan.md) ;;
+        *) die "Invalid file '${file}'. Valid options: context.md, plan.md" ;;
+    esac
 
     local editor="${VISUAL:-${EDITOR:-vi}}"
     "$editor" "${tdir}/${file}"
