@@ -539,33 +539,39 @@ review_pr() {
     # Validate repository match
     validate_github_url_repo "$pr_url" || die "Repository validation failed"
 
+    # Require a git repo in the caller's CWD (needed for worktree creation)
+    local source_repo
+    source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not in a git repository"
+
     local repo_path pr_number
     repo_path=$(echo "$pr_url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
     pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
 
     log_info "Reviewing PR #${pr_number} in ${repo_path}..."
 
-    # Fetch PR details
+    # Fetch PR details (include headRefName and isCrossRepository for worktree setup)
     local pr_json
-    pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,additions,deletions,commits,author,comments,reviews 2>/dev/null) ||
+    pr_json=$(gh pr view "$pr_number" --repo "$repo_path" \
+        --json title,body,files,additions,deletions,commits,author,comments,reviews,headRefName,isCrossRepository \
+        2>/dev/null) ||
         die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
 
-    local pr_title pr_author pr_additions pr_deletions
+    local pr_title pr_author pr_additions pr_deletions pr_body pr_branch_name pr_is_fork
     pr_title=$(echo "$pr_json" | jq -r '.title')
     pr_author=$(echo "$pr_json" | jq -r '.author.login')
     pr_additions=$(echo "$pr_json" | jq -r '.additions')
     pr_deletions=$(echo "$pr_json" | jq -r '.deletions')
-
-    local pr_body
     pr_body=$(echo "$pr_json" | jq -r '.body // ""')
+    pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName // ""')
+    pr_is_fork=$(echo "$pr_json" | jq -r '.isCrossRepository // false')
 
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
-    # Fetch PR diff
+    # Fetch PR diff (--color=never ensures clean text regardless of terminal environment)
     log_info "Fetching PR diff..."
     local pr_diff
-    pr_diff=$(gh pr diff "$pr_number" --repo "$repo_path" 2>/dev/null) ||
+    pr_diff=$(gh pr diff "$pr_number" --repo "$repo_path" --color=never 2>/dev/null) ||
         log_warn "Failed to fetch PR diff; agent will fetch it"
 
     # Format comments and reviews for context
@@ -604,19 +610,49 @@ ${reviews_text}
 ${pr_diff}
 \`\`\`"
 
-    # Get source repo to cd into it before running opencode
-    local source_repo
-    source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || true
-
-    # Run OpenCode with review agent (TUI mode), from inside the repo so git
-    # commands and file exploration work against the correct codebase
-    log_info "Starting code review..."
-
-    if [[ -n "$source_repo" && -d "$source_repo" ]]; then
-        cd "$source_repo"
+    # Dry run check
+    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
+        log_warn "Dry run mode - not executing"
+        return 0
     fi
 
-    opencode --agent review --prompt "$review_prompt"
+    # Create a temporary worktree checked out at the PR's head so the review agent
+    # can use git grep / git show against the exact state of the code being reviewed.
+    # For fork PRs the branch is not in origin, so fall back to running from the
+    # source repo root (the embedded diff still provides full context).
+    local session_id worktree_path
+    session_id=$(generate_session_id)
+    worktree_path="${WORKTREES_DIR}/review-${session_id}"
+
+    if [[ "$pr_is_fork" == "true" ]]; then
+        log_warn "Fork PR detected — skipping worktree; git grep/show will reflect your current branch"
+        log_info "Starting code review..."
+        cd "$source_repo"
+        opencode --agent review --prompt "$review_prompt"
+    else
+        # Fetch the PR branch from origin
+        log_info "Fetching PR branch '${pr_branch_name}'..."
+        git fetch origin "${pr_branch_name}:refs/remotes/origin/${pr_branch_name}" 2>/dev/null ||
+            die "Failed to fetch PR branch '${pr_branch_name}' from origin"
+
+        # Create a detached-HEAD worktree at the PR's head — no local branch needed
+        # since the review agent never commits
+        log_info "Creating review worktree at PR head..."
+        git worktree add --detach "$worktree_path" "origin/${pr_branch_name}" ||
+            die "Failed to create review worktree"
+
+        # Register worktree for cleanup (no branch to delete — detached HEAD)
+        CLEANUP_WORKTREE_PATH="$worktree_path"
+        CLEANUP_BRANCH_NAME=""
+        CLEANUP_SOURCE_REPO="$source_repo"
+        trap cleanup EXIT SIGTERM SIGHUP SIGINT
+
+        log_success "Review worktree created at PR head"
+        log_info "Starting code review..."
+
+        cd "$worktree_path"
+        opencode --agent review --prompt "$review_prompt"
+    fi
 
     log_success "PR review completed"
 }
