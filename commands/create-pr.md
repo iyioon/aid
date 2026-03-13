@@ -3,52 +3,43 @@ description: Create a pull request for completed work
 agent: dispatch
 ---
 
-## Create Pull Request
+<instructions>
+Create a pull request for the current branch.
 
-### Step 1: Verify Clean State
+1. Verify all changes are committed (`git status`)
+2. Push the branch (`git push -u origin HEAD`)
+3. Create the PR with `gh pr create`
+4. Output the PR URL
+</instructions>
 
-Run `git status` to ensure all changes are committed.
-If there are uncommitted changes, commit them first.
+<pr_format>
+Title: `type: description` (feat, fix, docs, refactor, test, chore)
 
-### Step 2: Push Branch
-
-```bash
-git push -u origin HEAD
+Body:
 ```
-
-### Step 3: Gather Context
-
-```bash
-# List commits
-git log --oneline origin/main..HEAD
-
-# Show diff stats
-git diff --stat origin/main..HEAD
-```
-
-### Step 4: Create PR
-
-Use `gh pr create` with a descriptive title and body:
-
-```bash
-gh pr create --title "<type>: <description>" --body "$(cat <<'EOF'
 ## Summary
-<Brief description of what this PR accomplishes>
+Brief description of what this PR accomplishes.
 
 ## Changes
-- <List of specific changes>
+- List of specific changes
 
 ## Testing
-<How the changes were tested>
+How changes were verified.
+```
+</pr_format>
 
-## Related Issues
-<Closes #123 or N/A>
+<example>
+gh pr create --title "fix: handle null user in auth flow" --body "$(cat <<'EOF'
+## Summary
+Fixes crash when user object is null during authentication.
+
+## Changes
+- Added null check in auth.ts before accessing user properties
+- Added test case for null user scenario
+
+## Testing
+- Added unit test that passes
+- Manually tested login flow
 EOF
 )"
-```
-
-**Title format**: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
-
-### Step 5: Output Result
-
-Print the PR URL so the user can review it.
+</example>

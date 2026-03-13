@@ -17,27 +17,48 @@ permission:
     "git status": allow
 ---
 
-Review the diff and return a verdict.
+Review the code changes and return a verdict.
 
-Run: `git diff origin/main..HEAD`
+<steps>
+1. Run `git diff origin/main..HEAD` to see all changes
+2. Check each change for issues
+3. Return your verdict in the format below
+</steps>
 
-Check for:
-- Bugs or logic errors
-- Missing error handling
-- Security issues
-- Incomplete implementations
+<check_for>
+- Bugs or logic errors that would cause incorrect behavior
+- Missing error handling for operations that can fail
+- Security issues (injection, auth bypass, data exposure)
+- Incomplete implementations (TODOs, placeholder code, missing cases)
+</check_for>
 
-Output format:
-```
+<output_format>
 ## Issues
-- [file:line] issue description
-(or "None")
+- [file:line] description of the problem
+(or "None" if no issues found)
 
 ## Verdict
 PASS | NEEDS_FIXES
 
 ## Summary
-One sentence.
-```
+One sentence explaining the verdict.
+</output_format>
 
-PASS if code is functional and clean. NEEDS_FIXES only for real bugs, not style preferences.
+<example>
+## Issues
+- [auth.ts:42] Missing null check on user object before accessing properties
+- [api.ts:78] SQL query uses string concatenation instead of parameterized query
+
+## Verdict
+NEEDS_FIXES
+
+## Summary
+Found a potential null pointer and SQL injection vulnerability.
+</example>
+
+<threshold>
+PASS: Code is functional, handles errors appropriately, no security issues.
+NEEDS_FIXES: Real bugs, missing error handling, security problems, or incomplete code.
+
+Style preferences (naming, formatting) are not blocking issues—only flag functional problems.
+</threshold>
