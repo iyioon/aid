@@ -9,8 +9,11 @@
 #   aid "task description"           Work on a plain text task (TUI mode)
 #   aid review <pr-url>              Review a PR and post feedback (TUI mode, read-only)
 #   aid list                         List active dispatch sessions
+#   aid view <session-id>            View session details and optionally resume
 #   aid cleanup [--failed|--all] [--force]  Clean up sessions
 #   aid resume <session-id>          Resume a previous session
+#   aid help                         Show help message
+#   aid --version                    Show version information
 #
 # Environment:
 #   AID_DEBUG=1                      Enable debug output

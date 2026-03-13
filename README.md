@@ -76,7 +76,7 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 
 | Command | Mode | Creates Worktree | Edits Files | Posts Comment |
 |---------|------|------------------|-------------|---------------|
-| `aid review <pr-url>` | Read-only | No | No | Yes |
+| `aid review <pr-url>` | Read-only | Yes (detached, for code exploration) | No | Yes |
 | `aid <pr-url>` | Full access | Yes | Yes | Creates commits |
 
 ## Documentation
@@ -96,9 +96,10 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 ### PR Review (`aid review <pr-url>`)
 
 1. **Fetch PR**: Gets PR details, diff, comments, and existing reviews
-2. **Run OpenCode**: Launches OpenCode with read-only `review` agent (TUI by default)
-3. **Analyze**: Agent reviews code for issues, bugs, and improvements
-4. **Post Comment**: Agent posts review comment via `gh pr review`
+2. **Create Worktree**: Creates a detached-HEAD worktree at the PR's head (for `git grep`/`git show` access); fork PRs fall back to the source repo
+3. **Run OpenCode**: Launches OpenCode with read-only `review` agent
+4. **Analyze**: Agent reviews code for issues, bugs, and improvements
+5. **Post Comment**: Agent posts review comment via `gh pr review`
 
 ## Agents
 

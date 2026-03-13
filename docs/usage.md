@@ -64,7 +64,7 @@ aid https://github.com/owner/repo/pull/456
 
 The agent will:
 1. Fetch the PR details and review comments
-2. Create a branch named `aid/20250312-143022-5678` (using a unique session ID)
+2. Check out the PR's existing branch (not a new `aid/` branch, so commits go directly to the PR)
 3. Implement the requested changes
 4. Push commits to the PR branch
 
@@ -246,13 +246,13 @@ aid list
 
 Output:
 ```
-Active Development Sessions
-───────────────────────────────────────────────────────────────────────────────────────
+Active AI Dispatch Sessions
+────────────────────────────────────────────────────────────────────────────────────────
 SESSION              STATUS       BRANCH                              CREATED
-───────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────
 20250312-143022-1234 running      aid/20250312-143022-1234            2025-03-12T14:30:22Z
 20250312-150145-5678 completed    aid/20250312-150145-5678            2025-03-12T15:01:45Z
-───────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────
 Total: 2 session(s)
 ```
 
@@ -301,16 +301,28 @@ Pull Request
 Open session in OpenCode? [y/N]
 ```
 
-### Clean Up Orphaned Sessions
+### Clean Up Sessions
 
-If sessions weren't cleaned up properly (e.g., system crash):
+If sessions weren't cleaned up properly (e.g., system crash), use `aid cleanup`:
 
 ```bash
-# See orphaned sessions
+# List orphaned sessions (running but process died) — dry run, no changes
 aid cleanup
 
-# Force cleanup
+# Force remove orphaned sessions
 aid cleanup --force
+
+# List failed sessions
+aid cleanup --failed
+
+# Force remove failed sessions
+aid cleanup --failed --force
+
+# List all cleanable sessions (orphaned + failed)
+aid cleanup --all
+
+# Force remove all cleanable sessions
+aid cleanup --all --force
 ```
 
 ### Clean Up Stale Branches
@@ -352,7 +364,8 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
 
 3. **Worktree Setup**
    - Creates worktree in `~/.config/opencode/worktrees/<session-id>`
-   - Based on latest `origin/main` (or `origin/master`)
+   - For issues/plain text: based on latest `origin/<default-branch>`
+   - For GitHub PRs: checked out at the PR's existing branch (so commits go directly to the PR)
 
 4. **State Tracking**
    - Creates JSON state file in `~/.config/opencode/dispatch/`
@@ -370,17 +383,23 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
 ### What Happens During Review
 
 1. **PR Fetching**
-   - Fetches PR metadata (title, description, author)
+   - Fetches PR metadata (title, description, author, additions/deletions)
    - Retrieves full diff via `gh pr diff`
    - Loads existing comments and reviews for context
 
-2. **OpenCode Execution**
-   - Runs `opencode --agent review` with PR context
+2. **Worktree Setup** (non-fork PRs only)
+   - Fetches the PR branch from origin
+   - Creates a detached-HEAD worktree at the PR's head commit
+   - Allows the review agent to run `git grep` / `git show` against the exact code being reviewed
+   - For fork PRs, falls back to running from the source repo root (diff still provided as context)
+
+3. **OpenCode Execution**
+   - Runs `opencode --agent review` with enriched PR context (diff, description, prior comments/reviews)
    - Agent analyzes in read-only mode (cannot edit files)
 
-3. **Review Posting**
+4. **Review Posting**
    - Agent posts structured comment via `gh pr review`
-   - No worktree created, no cleanup needed
+   - Worktree is cleaned up after the session ends
 
 ### The Development Agent
 
