@@ -266,6 +266,7 @@ cmd_status() {
     
     [[ -d "$TASKS_DIR" ]] || { log_info "No tasks found"; return; }
     
+    local ready_to_merge=()
     local awaiting_review=()
     local needs_changes=()
     local working=()
@@ -278,7 +279,8 @@ cmd_status() {
         status=$(jq -r '.status // "working"' "$tfile")
         pr_number=$(jq -r '.pr_number // empty' "$tfile")
         pr_url=$(jq -r '.pr_url // empty' "$tfile")
-        source=$(jq -r '.source // ""' "$tfile" | head -c 50)
+        # Sanitize source: replace pipe/tab/newline with space, truncate to 50 chars
+        source=$(jq -r '.source // ""' "$tfile" | tr $'\n\t|' '   ' | head -c 50)
         repo=$(jq -r '.repo // ""' "$tfile")
         
         # Check live PR state if we have a PR
@@ -294,12 +296,29 @@ cmd_status() {
                 OPEN:CHANGES_REQUESTED)
                     status="needs-changes"
                     ;;
+                OPEN:APPROVED)
+                    status="ready-to-merge"
+                    ;;
                 OPEN:*)
-                    # Check for unaddressed comments
-                    local comment_count
-                    comment_count=$(gh pr view "$pr_number" --repo "$repo" --json comments \
-                        --jq '.comments | length' 2>/dev/null) || comment_count=0
-                    if [[ "$comment_count" -gt 0 ]]; then
+                    # Check for reviews/comments
+                    local feedback_json
+                    feedback_json=$(gh pr view "$pr_number" --repo "$repo" --json comments,reviews \
+                        --jq '{
+                            changes_requested: [.reviews[] | select(.state == "CHANGES_REQUESTED")],
+                            lgtm_comments: [.comments[] | select(.body | test("^lgtm[.!]?$"; "i"))],
+                            regular_comments: [.comments[] | select(.body | test("^lgtm[.!]?$"; "i") | not)]
+                        }' 2>/dev/null) || feedback_json="{}"
+
+                    local changes_count lgtm_count comments_count
+                    changes_count=$(echo "$feedback_json" | jq '.changes_requested | length')
+                    lgtm_count=$(echo "$feedback_json" | jq '.lgtm_comments | length')
+                    comments_count=$(echo "$feedback_json" | jq '.regular_comments | length')
+                    
+                    if [[ "$changes_count" -gt 0 ]]; then
+                        status="needs-changes"
+                    elif [[ "$lgtm_count" -gt 0 ]]; then
+                        status="ready-to-merge"
+                    elif [[ "$comments_count" -gt 0 ]]; then
                         status="needs-changes"
                     else
                         status="awaiting-review"
@@ -311,6 +330,7 @@ cmd_status() {
         local entry="${task_id}|${pr_url:-none}|${source}..."
         
         case "$status" in
+            ready-to-merge) ready_to_merge+=("$entry") ;;
             awaiting-review) awaiting_review+=("$entry") ;;
             needs-changes) needs_changes+=("$entry") ;;
             working) working+=("$entry") ;;
@@ -318,8 +338,16 @@ cmd_status() {
     done
     
     # Print results
+    if [[ ${#ready_to_merge[@]} -gt 0 ]]; then
+        printf "\n${BOLD}READY TO MERGE${NC} ${DIM}(run 'aid <id>' to auto-merge)${NC}\n"
+        for entry in "${ready_to_merge[@]}"; do
+            IFS='|' read -r id url desc <<< "$entry"
+            printf "  ${GREEN}%s${NC}  %s  ${DIM}%s${NC}\n" "$id" "$url" "$desc"
+        done
+    fi
+
     if [[ ${#awaiting_review[@]} -gt 0 ]]; then
-        printf "\n${BOLD}AWAITING REVIEW${NC} ${DIM}(run 'aid lgtm <id>' to merge)${NC}\n"
+        printf "\n${BOLD}AWAITING REVIEW${NC} ${DIM}(run 'aid view <id>' to open PR)${NC}\n"
         for entry in "${awaiting_review[@]}"; do
             IFS='|' read -r id url desc <<< "$entry"
             printf "  ${CYAN}%s${NC}  %s  ${DIM}%s${NC}\n" "$id" "$url" "$desc"
@@ -335,14 +363,14 @@ cmd_status() {
     fi
     
     if [[ ${#working[@]} -gt 0 ]]; then
-        printf "\n${BOLD}WORKING${NC} ${DIM}(run 'aid <id>' to continue)${NC}\n"
+        printf "\n${BOLD}WORKING${NC} ${DIM}(AI is still working on these)${NC}\n"
         for entry in "${working[@]}"; do
             IFS='|' read -r id url desc <<< "$entry"
             printf "  ${BLUE}%s${NC}  ${DIM}%s${NC}\n" "$id" "$desc"
         done
     fi
     
-    if [[ ${#awaiting_review[@]} -eq 0 && ${#needs_changes[@]} -eq 0 && ${#working[@]} -eq 0 ]]; then
+    if [[ ${#ready_to_merge[@]} -eq 0 && ${#awaiting_review[@]} -eq 0 && ${#needs_changes[@]} -eq 0 && ${#working[@]} -eq 0 ]]; then
         log_info "No active tasks"
     fi
     
@@ -355,6 +383,7 @@ cmd_resume() {
     
     require_cmd opencode
     require_cmd jq
+    require_cmd gh
     
     # Find task by ID or PR URL
     if is_github_pr_url "$input"; then
@@ -365,35 +394,79 @@ cmd_resume() {
         die "Task not found: $input"
     fi
     
-    local worktree pr_number repo
+    local worktree pr_number repo status
     worktree=$(get_task_field "$task_id" "worktree")
     pr_number=$(get_task_field "$task_id" "pr_number")
     repo=$(get_task_field "$task_id" "repo")
+    status=$(get_task_field "$task_id" "status")
     
     [[ -d "$worktree" ]] || die "Worktree not found: $worktree"
     
-    # Fetch PR comments if we have a PR
-    local feedback=""
-    if [[ -n "$pr_number" && -n "$repo" ]]; then
-        log_info "Fetching PR comments..."
-        feedback=$(gh pr view "$pr_number" --repo "$repo" --json comments,reviews \
-            --jq '
-                ([.reviews[] | select(.state != "APPROVED") | "Review (" + .state + "): " + .body] +
-                 [.comments[-5:][] | "Comment: " + .body]) | join("\n\n")
-            ' 2>/dev/null) || feedback=""
+    # Block if task has no PR yet
+    if [[ -z "$pr_number" ]]; then
+        die "Task has no PR yet. Wait for the AI to finish, or check 'aid status'."
+    fi
+    
+    # Ensure repo is set
+    [[ -n "$repo" ]] || die "Task has no repo configured."
+    
+    # Check PR state on GitHub
+    local pr_state review_decision
+    pr_state=$(gh pr view "$pr_number" --repo "$repo" --json state,reviewDecision \
+        --jq '.state + ":" + (.reviewDecision // "")' 2>/dev/null) || pr_state=""
+    
+    case "$pr_state" in
+        MERGED:*)
+            die "PR #${pr_number} is already merged. Run 'aid cleanup' to remove this task."
+            ;;
+        CLOSED:*)
+            die "PR #${pr_number} is closed. Run 'aid cleanup' to remove this task."
+            ;;
+    esac
+    
+    # Extract review decision from pr_state
+    review_decision="${pr_state#*:}"
+    
+    # Auto-merge if approved by GitHub Review
+    if [[ "$review_decision" == "APPROVED" ]]; then
+        log_info "PR has been approved. Merging..."
+        cmd_approve "$task_id"
+        return
+    fi
+    
+    # Check for "LGTM" comment (case-insensitive, optional punctuation)
+    local lgtm_comment
+    lgtm_comment=$(gh pr view "$pr_number" --repo "$repo" --json comments \
+        --jq '.comments[] | select(.body | test("^lgtm[.!]?$"; "i")) | .body' 2>/dev/null | head -n 1) || lgtm_comment=""
+        
+    if [[ -n "$lgtm_comment" ]]; then
+        log_info "Found LGTM comment. Merging..."
+        cmd_approve "$task_id"
+        return
+    fi
+    
+    # Fetch PR feedback (reviews with content + recent comments with content)
+    log_info "Fetching PR feedback..."
+    local feedback
+    feedback=$(gh pr view "$pr_number" --repo "$repo" --json comments,reviews \
+        --jq '
+            ([.reviews[] | select(.state == "CHANGES_REQUESTED" and .body != "") | "Review (CHANGES_REQUESTED): " + .body] +
+             [.comments[-5:][] | select(.body != "" and (.body | test("^lgtm[.!]?$"; "i") | not)) | "Comment: " + .body]) | join("\n\n")
+        ' 2>/dev/null) || feedback=""
+    
+    # Check if feedback has actual content (not just whitespace)
+    if [[ -z "${feedback//[[:space:]]/}" ]]; then
+        die "No feedback to address. Use 'aid approve ${task_id}' to merge, or add comments on the PR."
     fi
     
     update_task_status "$task_id" "working"
     
     cd "$worktree"
     
-    if [[ -n "$feedback" ]]; then
-        log_info "Found feedback to address"
-        opencode --agent dispatch --prompt "Address this PR feedback:\n\n${feedback}\n\nAfter fixing, push the changes."
-    else
-        log_info "Resuming task..."
-        opencode --agent dispatch
-    fi
+    log_info "Found feedback to address"
+    local prompt
+    printf -v prompt "Address this PR feedback:\n\n%s\n\nAfter fixing, push the changes." "$feedback"
+    opencode --agent dispatch --prompt "$prompt"
     
     # Check if PR exists after session
     local pr_url
@@ -403,6 +476,36 @@ cmd_resume() {
         new_pr_number=$(extract_number "$pr_url")
         update_task_pr "$task_id" "$pr_url" "$new_pr_number"
         log_success "Task ${task_id} has PR: ${pr_url}"
+    fi
+}
+
+cmd_view() {
+    local task_id="$1"
+    
+    require_cmd jq
+    require_cmd gh
+    
+    [[ -d "${TASKS_DIR}/${task_id}" ]] || die "Task not found: $task_id"
+    
+    local pr_number pr_url repo source status created
+    pr_number=$(get_task_field "$task_id" "pr_number")
+    pr_url=$(get_task_field "$task_id" "pr_url")
+    repo=$(get_task_field "$task_id" "repo")
+    source=$(get_task_field "$task_id" "source")
+    status=$(get_task_field "$task_id" "status")
+    created=$(get_task_field "$task_id" "created")
+    
+    # If PR exists with valid data, open in browser
+    if [[ -n "$pr_number" && -n "$repo" ]]; then
+        log_info "Opening PR in browser..."
+        gh pr view "$pr_number" --repo "$repo" --web
+    else
+        # No PR yet, show task info
+        printf "\n${BOLD}Task:${NC} %s\n" "$task_id"
+        printf "${BOLD}Status:${NC} %s\n" "$status"
+        printf "${BOLD}Created:${NC} %s\n" "$created"
+        printf "${BOLD}Description:${NC}\n%s\n\n" "$source"
+        log_info "No PR created yet"
     fi
 }
 
@@ -474,11 +577,15 @@ cmd_cleanup() {
                 should_clean=true
             fi
         elif [[ -n "$branch" && -n "$repo" ]]; then
-            # Check if branch still exists
-            local http_status
-            http_status=$(gh api "repos/${repo}/branches/${branch}" --silent 2>&1 | head -1) || http_status="404"
-            if [[ "$http_status" == *"404"* ]]; then
-                should_clean=true
+            # Check if branch still exists (robust check using HTTP status)
+            local http_code
+            http_code=$(gh api "repos/${repo}/branches/${branch}" --include --silent 2>/dev/null | grep "^HTTP/" | tail -n 1 | awk '{print $2}' | tr -d '\r')
+            http_code="${http_code:-000}"
+            
+            if [[ "$http_code" == "404" ]]; then
+                 should_clean=true
+            elif [[ "$http_code" == "000" || "$http_code" == "5"* ]]; then
+                 log_warn "Could not check branch status for ${task_id} (API error)"
             fi
         fi
         
@@ -490,8 +597,10 @@ cmd_cleanup() {
                 git worktree remove "$worktree" --force 2>/dev/null || rm -rf "$worktree"
             fi
             
-            # Remove local branch
-            git branch -D "$branch" 2>/dev/null || true
+            # Remove local branch if set
+            if [[ -n "$branch" ]]; then
+                git branch -D "$branch" 2>/dev/null || true
+            fi
             
             # Remove task
             rm -rf "${TASKS_DIR}/${task_id}"
@@ -515,10 +624,10 @@ ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
   aid status                     List tasks by status
-  aid <task-id>                  Resume a task
-  aid <pr-url>                   Resume task by PR URL
+  aid <task-id>                  Address PR feedback (auto-merges if approved)
+  aid <pr-url>                   Address PR feedback by PR URL
+  aid view <task-id>             Open PR in browser or show task info
   aid approve <task-id>          Merge PR and cleanup
-  aid lgtm <task-id>             Alias for approve
   aid cleanup                    Remove merged/closed tasks
   aid help                       Show this help
 
@@ -530,13 +639,14 @@ ${BOLD}WORKFLOW${NC}
   2. ${CYAN}aid status${NC}
      Check which tasks need attention
 
-  3. Review PR on GitHub, leave comments if needed
+  3. Review PR on GitHub, leave comments or approve
 
   4. ${CYAN}aid <task-id>${NC}
-     Resume to address feedback (if any)
+     - If approved: auto-merges and cleans up
+     - If has comments: AI addresses feedback
 
-  5. ${CYAN}aid lgtm <task-id>${NC}
-     Approve and merge when ready
+  5. ${CYAN}aid approve <task-id>${NC}
+     Manually merge when ready
 
 ${BOLD}STATUSES${NC}
   ${BLUE}working${NC}          AI is actively working
@@ -548,8 +658,9 @@ ${BOLD}EXAMPLES${NC}
   aid new "Fix login timeout bug"
   aid new https://github.com/owner/repo/issues/42
   aid status
+  aid view aid-20260313-143052
   aid aid-20260313-143052
-  aid lgtm aid-20260313-143052
+  aid approve aid-20260313-143052
   aid cleanup
 EOF
 }
@@ -570,7 +681,11 @@ main() {
         status|list|ls)
             cmd_status
             ;;
-        approve|lgtm)
+        view)
+            [[ -n "${2:-}" ]] || die "Usage: aid view <task-id>"
+            cmd_view "$2"
+            ;;
+        approve)
             [[ -n "${2:-}" ]] || die "Usage: aid approve <task-id>"
             cmd_approve "$2"
             ;;
