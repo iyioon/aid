@@ -686,7 +686,9 @@ Review the PR comments and requested changes, then implement the necessary fixes
     # Fetch latest changes
     log_info "Fetching latest changes..."
     if [[ "$task_type" == "github_pr" ]]; then
-        # For PR tasks, worktree is based on the PR branch — default branch fetch failure is non-fatal
+        # The default branch is only used as informational context in the task prompt;
+        # the worktree is based entirely on the PR branch, so a stale default branch
+        # cannot affect the work — failure here is intentionally non-fatal.
         git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch default branch, continuing anyway"
         git fetch origin "$branch_name" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
     else
@@ -698,18 +700,19 @@ Review the PR comments and requested changes, then implement the necessary fixes
     if [[ "$task_type" == "github_pr" ]]; then
         # For PR tasks: check out the existing PR branch so fixes go directly to the PR
         if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
-            # Refuse to sync if local branch has diverged from origin — avoids silent data loss
+            # Die if local has commits not in origin (ahead or diverged) — safe to proceed
+            # only when local is a strict ancestor of or equal to origin (merge_base == local_tip).
             local local_tip remote_tip merge_base
             local_tip=$(git rev-parse "refs/heads/${branch_name}")
             remote_tip=$(git rev-parse "origin/${branch_name}")
             merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}" 2>/dev/null || true)
-            if [[ "$local_tip" != "$remote_tip" && "$merge_base" != "$local_tip" ]]; then
-                die "Local branch '${branch_name}' has diverged from origin. Aborting to prevent data loss."
+            if [[ "$local_tip" != "$remote_tip" && "$local_tip" != "$merge_base" ]]; then
+                die "Local branch '${branch_name}' has commits not in origin. Aborting to prevent data loss."
             fi
             # Refuse to reset if the branch is already checked out in another worktree
             local worktree_list
             worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
-            if echo "$worktree_list" | grep -qF "branch refs/heads/${branch_name}"; then
+            if echo "$worktree_list" | grep -qxF "branch refs/heads/${branch_name}"; then
                 die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
             fi
             git branch -f "$branch_name" "origin/${branch_name}" ||
