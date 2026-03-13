@@ -295,12 +295,22 @@ create_task_context() {
 
     # Only create task.json if it doesn't exist (don't overwrite existing context)
     if [[ ! -f "${tdir}/task.json" ]]; then
+        # Validate pr_number: --argjson requires a valid JSON value; guard against
+        # non-numeric strings (e.g. a failed grep) that would make jq exit non-zero
+        # and leave a zero-byte task.json on disk.
+        local pr_number_json
+        if [[ "${pr_number:-}" =~ ^[0-9]+$ ]]; then
+            pr_number_json="$pr_number"
+        else
+            pr_number_json="null"
+        fi
+
         jq -n \
             --arg id "$task_id" \
             --arg branch "$branch_name" \
             --arg repo "$repo" \
             --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --argjson pr_number "${pr_number:-null}" \
+            --argjson pr_number "$pr_number_json" \
             --arg pr_url "${pr_url:-}" \
             '{
                 id: $id,
@@ -1434,21 +1444,14 @@ tasks_cleanup() {
 
     [[ -d "$TASKS_DIR" ]] || { log_info "No tasks directory found"; return; }
 
-    # --merged mode uses git ls-remote, which requires a git repository in CWD
-    if [[ "$mode" == "merged" ]]; then
-        if ! git rev-parse --git-dir &>/dev/null; then
-            log_warn "tasks cleanup --merged requires a git repository (run from your project dir)"
-            return 1
-        fi
-    fi
-
     for tfile in "${TASKS_DIR}"/*/task.json; do
         [[ -f "$tfile" ]] || continue
 
-        local task_id branch status
+        local task_id branch status task_repo
         task_id=$(jq -r '.id // ""' "$tfile" 2>/dev/null)
         branch=$(jq -r '.branch // ""' "$tfile" 2>/dev/null)
         status=$(jq -r '.status // ""' "$tfile" 2>/dev/null)
+        task_repo=$(jq -r '.repo // ""' "$tfile" 2>/dev/null)
 
         [[ -z "$task_id" ]] && continue
 
@@ -1459,11 +1462,28 @@ tasks_cleanup() {
             should_clean=true
             reason="all"
         elif [[ "$mode" == "merged" ]]; then
-            # Check if the branch has been merged (no longer exists on remote)
+            # Check if the branch has been merged/deleted on the remote.
+            # Use gh api routed to each task's own repo so that tasks from
+            # multiple repos are checked against the correct remote — not just
+            # the CWD repo's origin (which would falsely flag branches from
+            # other repos as deleted).
             if [[ -n "$branch" ]]; then
-                if ! git ls-remote --heads origin "$branch" 2>/dev/null | grep -q .; then
-                    should_clean=true
-                    reason="branch deleted/merged"
+                if [[ -n "$task_repo" ]]; then
+                    if ! gh api "repos/${task_repo}/branches/${branch}" &>/dev/null; then
+                        should_clean=true
+                        reason="branch deleted/merged"
+                    fi
+                else
+                    # Legacy tasks without a repo field: fall back to git ls-remote
+                    # but only if we are inside a git repo to avoid false positives.
+                    if git rev-parse --git-dir &>/dev/null; then
+                        if ! git ls-remote --heads origin "$branch" 2>/dev/null | grep -q .; then
+                            should_clean=true
+                            reason="branch deleted/merged"
+                        fi
+                    else
+                        log_warn "Skipping task ${task_id}: no repo field and not in a git repo"
+                    fi
                 fi
             fi
         fi
