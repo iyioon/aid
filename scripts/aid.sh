@@ -371,8 +371,8 @@ cmd_status() {
         fi
     done
 
-    # Wait for all background fetches
-    for pid in "${pids[@]}"; do
+    # Wait for all background fetches (guard against empty array under set -u on bash 3.2)
+    for pid in "${pids[@]+"${pids[@]}"}"; do
         wait "$pid" || true
     done
 
@@ -383,8 +383,8 @@ cmd_status() {
         status=$(jq -r '.status // "working"' "$tfile")
         pr_number=$(jq -r '.pr_number // empty' "$tfile")
         pr_url=$(jq -r '.pr_url // empty' "$tfile")
-        # Safe truncation via jq — avoids splitting multibyte chars
-        source=$(jq -r '.source // "" | .[0:60]' "$tfile")
+        # Safe truncation via jq — avoids splitting multibyte chars; collapse newlines for display.
+        source=$(jq -r '.source // "" | gsub("\n"; " ") | .[0:60]' "$tfile")
         repo=$(jq -r '.repo // ""' "$tfile")
 
         if [[ -n "$pr_number" && -n "$repo" && -f "${tmpdir}/${task_id}.json" ]]; then
@@ -594,7 +594,7 @@ cmd_cleanup() {
             # passed as a single path segment rather than multiple segments.
             local encoded_branch
             encoded_branch=$(urlencode "$branch")
-            if ! gh api "repos/${repo}/branches/${encoded_branch}" &>/dev/null 2>&1; then
+            if ! gh api "repos/${repo}/branches/${encoded_branch}" &>/dev/null; then
                 should_clean=true
             fi
         fi
