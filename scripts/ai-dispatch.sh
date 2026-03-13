@@ -556,20 +556,66 @@ review_pr() {
     pr_additions=$(echo "$pr_json" | jq -r '.additions')
     pr_deletions=$(echo "$pr_json" | jq -r '.deletions')
 
+    local pr_body
+    pr_body=$(echo "$pr_json" | jq -r '.body // ""')
+
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
-    # Prepare review prompt - minimal context, agent knows the workflow
+    # Fetch PR diff
+    log_info "Fetching PR diff..."
+    local pr_diff
+    pr_diff=$(gh pr diff "$pr_number" --repo "$repo_path" 2>/dev/null) ||
+        log_warn "Failed to fetch PR diff; agent will fetch it"
+
+    # Format comments and reviews for context
+    local comments_text reviews_text
+    comments_text=$(echo "$pr_json" | jq -r '
+        (.comments // []) |
+        if length == 0 then "(none)"
+        else map("**\(.author.login)**: \(.body)") | join("\n\n")
+        end')
+    reviews_text=$(echo "$pr_json" | jq -r '
+        (.reviews // []) |
+        map(select(.body != null and .body != "")) |
+        if length == 0 then "(none)"
+        else map("**\(.author.login)** [\(.state)]: \(.body)") | join("\n\n")
+        end')
+
+    # Build the enriched review prompt
     local review_prompt
-    review_prompt="Review this PR: ${pr_url}
+    review_prompt="Review PR #${pr_number}: ${pr_url}
 
-- Title: ${pr_title}
-- Author: ${pr_author}
-- Changes: +${pr_additions}/-${pr_deletions} lines"
+Title: ${pr_title}
+Author: ${pr_author}
+Changes: +${pr_additions}/-${pr_deletions} lines
 
-    # Run OpenCode with review agent (TUI mode)
+## Description
+${pr_body:-"(no description provided)"}
+
+## Prior Comments
+${comments_text}
+
+## Prior Reviews
+${reviews_text}
+
+## Diff
+\`\`\`diff
+${pr_diff}
+\`\`\`"
+
+    # Get source repo to cd into it before running opencode
+    local source_repo
+    source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || true
+
+    # Run OpenCode with review agent (TUI mode), from inside the repo so git
+    # commands and file exploration work against the correct codebase
     log_info "Starting code review..."
-    
+
+    if [[ -n "$source_repo" && -d "$source_repo" ]]; then
+        cd "$source_repo"
+    fi
+
     opencode --agent review --prompt "$review_prompt"
 
     log_success "PR review completed"
