@@ -565,6 +565,9 @@ review_pr() {
     pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName // ""')
     pr_is_fork=$(echo "$pr_json" | jq -r '.isCrossRepository // false')
 
+    [[ -z "$pr_branch_name" || "$pr_branch_name" == "null" ]] &&
+        die "Could not determine PR branch name from PR #${pr_number}"
+
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
