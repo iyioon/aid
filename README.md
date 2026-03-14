@@ -43,10 +43,10 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 3. **Human Review:**
    - Run `aid view <task-id>` to open the PR on GitHub.
    - **Leave Feedback:** Comment on specific lines or submit a review requesting changes.
-   - **Approve:** Submit an approval review or comment "LGTM".
+   - **Approve:** Submit an approval review or comment "LGTM" (which triggers auto-merge).
 4. **Resume (`aid <task-id>`):**
    - **Fixes:** If there is feedback (changes requested or comments), the AI fetches your comments, plans a fix, implements it, and pushes updates.
-   - **Merge:** If you approved (or commented "LGTM"), the tool automatically merges the PR and cleans up the task (deletes local worktree and branch).
+   - **Merge:** If you approved or commented "LGTM", the tool automatically merges the PR and cleans up the task (deletes local worktree and branch).
 5. `aid approve <task-id>` to manually merge if needed
 
 ## How Feedback Works
