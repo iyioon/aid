@@ -52,10 +52,11 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 ## How Feedback Works
 
 When you run `aid <task-id>` on a task with requested changes:
-1. The tool fetches all unresolved comments and review threads from the GitHub PR.
-2. It passes this feedback to the AI agent as a new prompt.
-3. The AI implements the requested fixes and pushes to the same branch.
-4. You review the updates on GitHub and repeat the cycle until approved.
+1. The tool fetches all comments and review threads from the GitHub PR using the `gh` CLI.
+2. It detects if there are any merge conflicts with the base branch.
+3. It passes this feedback (comments, reviews, conflict alerts) to the AI agent as a new prompt.
+4. The AI implements the requested fixes and pushes to the same branch.
+5. You review the updates on GitHub and repeat the cycle until approved.
 
 ## Statuses
 
