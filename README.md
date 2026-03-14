@@ -90,11 +90,11 @@ MIT
 
 ## AI Workflow
 
-The AI follows a structured **Plan → Implement → Review → Fix** cycle, orchestrated by the `dispatch` agent.
+The AI follows a structured **Understand → Implement → Review → Fix** cycle, orchestrated by the `dispatch` agent.
 
 ### Cycle
-1.  **Understand (Plan):** The AI analyzes the task and explores the codebase.
-    *   *Delegation:* Uses `@explore` agent if the relevant files are unknown or a broad search is needed.
+1.  **Understand:** The AI analyzes the task and explores the codebase.
+    *   *Delegation:* Uses the built-in `@explore` agent if the relevant files are unknown or a broad search is needed.
 2.  **Implement:** The AI writes code, creates files, and runs commands.
     *   *Strategy:* It works incrementally, committing after logical units of work.
 3.  **Review:** Before finishing, the AI requests a self-review.
@@ -105,7 +105,7 @@ The AI follows a structured **Plan → Implement → Review → Fix** cycle, orc
 
 ### Delegation Justification
 *   **Dispatch Agent (`agents/dispatch.md`):** The general-purpose orchestrator. It maintains the overall task context and makes decisions. It delegates to specialized agents to keep its own context clean and focused on implementation.
-*   **Explore Agent (`task: explore`):** Optimized for code navigation and search. Used to quickly locate relevant files without cluttering the main agent's context with search results.
+*   **Explore Agent (built-in):** Optimized for code navigation and search. Used to quickly locate relevant files without cluttering the main agent's context with search results.
 *   **Reviewer Agent (`agents/reviewer.md`):** Optimized for critique. It has no write access, forcing it to be objective. Segregating review into a separate agent reduces bias, as the implementing agent is often biased towards its own code.
 
 ## Configuration
@@ -113,15 +113,16 @@ The AI follows a structured **Plan → Implement → Review → Fix** cycle, orc
 You can customize the AI's behavior by editing the configuration files in `~/.config/opencode`.
 
 ### Global Configuration (`opencode.json`)
-Configure MCP servers, permissions, and environment variables.
+Configure MCP servers, global permissions, and environment variables.
 *   **MCP Servers:** Add/remove tools like `context7` or `gh_grep`.
-*   **Permissions:** Control file access and command execution.
+*   **Global Permissions:** Control access to external directories (e.g., `~/.config/opencode/worktrees/**`).
 
 ### Agent Configuration (`agents/*.md`)
-Customize agent behavior, models, and system prompts.
+Customize agent behavior, models, permissions, and system prompts.
 *   **Prompt:** Edit the text to change instructions or persona.
-*   **Model:** Change `model: github-copilot/gemini-3-pro-preview` to other available models.
+*   **Model:** Change the model for each agent (e.g., `dispatch` uses `gemini-3-pro-preview`, `reviewer` uses `claude-sonnet-4.6`).
 *   **Temperature:** Adjust creativity (lower for coding, higher for creative writing).
+*   **Permissions:** Control file access (`edit: allow`) and command execution (`bash: ...`) for each agent.
 *   **Tools:** Enable/disable specific tools for an agent.
 
 ### Command Configuration (`commands/*.md`)
