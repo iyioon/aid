@@ -373,17 +373,29 @@ cmd_new() {
     # Create worktree
     local worktree="${WORKTREES_DIR}/${task_id}"
     if [[ "$is_pr_input" == true ]]; then
-        # Checkout the PR's existing head branch
-        local pr_head_branch
-        pr_head_branch=$(gh pr view "$pr_number_input" --repo "$repo" --json headRefName --jq '.headRefName' 2>/dev/null) || \
+        # Fetch PR head branch info (after git fetch so refs are current)
+        local pr_head_branch pr_head_repo_owner pr_is_fork
+        pr_head_branch=$(gh pr view "$pr_number_input" --repo "$repo" \
+            --json headRefName --jq '.headRefName' 2>/dev/null) || \
             die "Failed to get PR head branch"
+        pr_head_repo_owner=$(gh pr view "$pr_number_input" --repo "$repo" \
+            --json headRepositoryOwner --jq '.headRepositoryOwner.login' 2>/dev/null) || pr_head_repo_owner=""
+        local base_repo_owner
+        base_repo_owner=$(echo "$repo" | cut -d/ -f1)
+
+        # Detect fork PRs: head repo owner differs from base repo owner
+        if [[ -n "$pr_head_repo_owner" && "$pr_head_repo_owner" != "$base_repo_owner" ]]; then
+            log_info "PR is from a fork (${pr_head_repo_owner}). Fetching fork ref..."
+            git fetch "https://github.com/${pr_head_repo_owner}/$(echo "$repo" | cut -d/ -f2).git" \
+                "${pr_head_branch}:refs/remotes/origin/${pr_head_branch}" 2>/dev/null || \
+                die "Failed to fetch fork branch '${pr_head_branch}' from ${pr_head_repo_owner}"
+        fi
+
         branch="$pr_head_branch"
 
         log_info "Creating worktree on PR branch: ${branch}"
-        git worktree add "$worktree" "origin/${branch}" || \
+        git worktree add -b "$branch" "$worktree" "origin/${branch}" || \
             die "Failed to create worktree for PR branch"
-        # Ensure the local branch tracks the remote
-        (cd "$worktree" && git checkout -B "$branch" "origin/${branch}" && git branch --set-upstream-to="origin/${branch}" "$branch") 2>/dev/null || true
     else
         # Determine base branch and create a new branch
         local base_branch
@@ -398,9 +410,14 @@ cmd_new() {
     create_task "$task_id" "$branch" "$source" "$source_url" "$repo"
     log_success "Created task: ${task_id}"
 
-    # If created from a PR, immediately record the PR link
+    # If created from a PR, record PR link while keeping status as "working"
     if [[ "$is_pr_input" == true ]]; then
-        update_task_pr "$task_id" "$source_url" "$pr_number_input"
+        local tdir
+        tdir=$(task_dir "$task_id")
+        _atomic_task_update "${tdir}/task.json" \
+            '.pr_url = $url | .pr_number = $num' \
+            --arg     url "$source_url" \
+            --argjson num "$pr_number_input"
     fi
 
     # Warn if source was too long
@@ -417,16 +434,21 @@ cmd_new() {
     log_info "Starting OpenCode..."
     (cd "$worktree" && opencode --agent dispatch --prompt "/work ${prompt_source}")
 
-    # After OpenCode exits, check if a PR was created
-    local pr_url pr_number
-    pr_url=$(cd "$worktree" && gh pr view --json url -q '.url' 2>/dev/null) || true
-
-    if [[ -n "$pr_url" ]]; then
-        pr_number=$(extract_number "$pr_url")
-        update_task_pr "$task_id" "$pr_url" "$pr_number"
-        log_success "Task ${task_id} has PR: ${pr_url}"
+    # After OpenCode exits, check if a PR was created (skip for PR-input tasks)
+    if [[ "$is_pr_input" == true ]]; then
+        update_task_status "$task_id" "awaiting-review"
+        log_success "Task ${task_id} has PR: ${source_url}"
     else
-        log_info "No PR created yet. Resume with: aid ${task_id}"
+        local pr_url pr_number
+        pr_url=$(cd "$worktree" && gh pr view --json url -q '.url' 2>/dev/null) || true
+
+        if [[ -n "$pr_url" ]]; then
+            pr_number=$(extract_number "$pr_url")
+            update_task_pr "$task_id" "$pr_url" "$pr_number"
+            log_success "Task ${task_id} has PR: ${pr_url}"
+        else
+            log_info "No PR created yet. Resume with: aid ${task_id}"
+        fi
     fi
 }
 
