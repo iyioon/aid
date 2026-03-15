@@ -394,7 +394,11 @@ cmd_new() {
         branch="$pr_head_branch"
 
         log_info "Creating worktree on PR branch: ${branch}"
-        git worktree add -b "$branch" "$worktree" "origin/${branch}" || \
+        # Use --track to check out the remote branch without -b, avoiding
+        # collisions with any pre-existing local branch of the same name.
+        # If a stale local branch exists, remove it first.
+        git branch -D "$branch" 2>/dev/null || true
+        git worktree add --track -b "$branch" "$worktree" "origin/${branch}" || \
             die "Failed to create worktree for PR branch"
     else
         # Determine base branch and create a new branch
@@ -436,8 +440,18 @@ cmd_new() {
 
     # After OpenCode exits, check if a PR was created (skip for PR-input tasks)
     if [[ "$is_pr_input" == true ]]; then
-        update_task_status "$task_id" "awaiting-review"
-        log_success "Task ${task_id} has PR: ${source_url}"
+        # Verify actual PR state before setting status
+        local post_pr_state
+        post_pr_state=$(gh pr view "$pr_number_input" --repo "$repo" --json state --jq '.state' 2>/dev/null) || post_pr_state=""
+        case "$post_pr_state" in
+            MERGED|CLOSED)
+                log_info "PR #${pr_number_input} is ${post_pr_state,,}. Run 'aid cleanup' to remove this task."
+                ;;
+            *)
+                update_task_status "$task_id" "awaiting-review"
+                log_success "Task ${task_id} has PR: ${source_url}"
+                ;;
+        esac
     else
         local pr_url pr_number
         pr_url=$(cd "$worktree" && gh pr view --json url -q '.url' 2>/dev/null) || true
