@@ -1,6 +1,6 @@
 ---
 description: Task orchestrator for autonomous development
-model: github-copilot/gemini-3-pro-preview
+model: github-copilot/claude-opus-4.6
 temperature: 0.3
 permission:
   edit: allow
