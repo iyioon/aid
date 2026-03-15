@@ -346,6 +346,81 @@ cmd_new() {
     fi
 }
 
+cmd_pr() {
+    local input="$1"
+
+    require_cmd gh
+    require_cmd jq
+    require_cmd git
+
+    if ! is_github_pr_url "$input"; then
+        die "Invalid PR URL: $input"
+    fi
+
+    # Check if task already exists
+    local existing_task
+    existing_task=$(find_task_by_pr "$input") || existing_task=""
+    if [[ -n "$existing_task" ]]; then
+        log_info "Task already exists: $existing_task"
+        cmd_resume "$existing_task"
+        return
+    fi
+
+    log_info "Importing PR..."
+
+    # Extract info
+    local repo
+    repo=$(extract_repo_path "$input")
+    local pr_number
+    pr_number=$(extract_number "$input")
+
+    # Fetch PR details
+    local pr_json
+    pr_json=$(gh pr view "$input" --json title,body,headRefName,url,state 2>/dev/null) || die "Failed to fetch PR details"
+
+    local title body branch url state
+    title=$(echo "$pr_json" | jq -r '.title')
+    body=$(echo "$pr_json" | jq -r '.body')
+    branch=$(echo "$pr_json" | jq -r '.headRefName')
+    url=$(echo "$pr_json" | jq -r '.url')
+    state=$(echo "$pr_json" | jq -r '.state')
+
+    if [[ "$state" == "MERGED" || "$state" == "CLOSED" ]]; then
+        die "PR is $state. Cannot import."
+    fi
+
+    # Generate task ID
+    local task_id
+    task_id=$(generate_task_id)
+
+    # Prepare directories
+    mkdir -p "$WORKTREES_DIR" "$TASKS_DIR"
+
+    # Fetch branch
+    log_info "Fetching branch $branch..."
+    git fetch origin "$branch" 2>/dev/null || die "Failed to fetch branch $branch"
+
+    # Create worktree
+    local worktree="${WORKTREES_DIR}/${task_id}"
+    log_info "Creating worktree: ${worktree}"
+    
+    if ! git worktree add "$worktree" "$branch" 2>/dev/null; then
+        die "Failed to create worktree for branch '$branch'. Is it already checked out?"
+    fi
+
+    # Create task record
+    local source
+    source=$(printf "PR #%s: %s\n\n%s" "$pr_number" "$title" "$body")
+    
+    create_task "$task_id" "$branch" "$source" "$url" "$repo"
+    update_task_pr "$task_id" "$url" "$pr_number"
+
+    log_success "Created task: ${task_id}"
+
+    # Resume
+    cmd_resume "$task_id"
+}
+
 cmd_status() {
     require_cmd jq
     require_cmd gh
@@ -812,6 +887,7 @@ ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
 ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
+  aid pr <pr-url>                Import a PR as a task
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Address PR feedback by PR URL
@@ -866,6 +942,10 @@ main() {
             [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url>"
             shift
             cmd_new "$@"
+            ;;
+        pr)
+            [[ -n "${2:-}" ]] || die "Usage: aid pr <pr-url>"
+            cmd_pr "$2"
             ;;
         status|list|ls)
             cmd_status
