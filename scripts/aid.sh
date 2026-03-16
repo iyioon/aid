@@ -56,6 +56,48 @@ truncate_str() {
     printf '%s' "$str" | jq -Rrs --argjson max "$max" '.[0:$max]'
 }
 
+# Build the initial dispatch prompt using commands/work.md as the source of truth.
+# Falls back to the embedded template if the command file is unavailable.
+build_work_prompt() {
+    local task_text="$1"
+    local cmd_file="${OPENCODE_CONFIG_DIR}/commands/work.md"
+    local template=""
+
+    if [[ -f "$cmd_file" ]]; then
+        # Strip YAML frontmatter from command markdown and use the body template.
+        template=$(awk '
+            BEGIN { in_frontmatter = 0; frontmatter_seen = 0 }
+            NR == 1 && $0 == "---" { in_frontmatter = 1; frontmatter_seen = 1; next }
+            in_frontmatter && $0 == "---" { in_frontmatter = 0; next }
+            !in_frontmatter { print }
+        ' "$cmd_file")
+    fi
+
+    if [[ -z "$template" ]]; then
+        template=$(cat <<'EOF'
+<task>
+$ARGUMENTS
+</task>
+
+<instructions>
+Complete this task autonomously through to a pull request.
+
+1. Understand the task by reading relevant code
+2. Implement the solution, committing as you go
+3. Get a code review from @reviewer (fix issues, max 3 cycles)
+4. Push and create the PR
+
+Output the PR URL when done. Only stop if genuinely blocked.
+</instructions>
+EOF
+)
+    fi
+
+    # Replace placeholder used by OpenCode custom commands.
+    template="${template//\$ARGUMENTS/$task_text}"
+    printf '%s' "$template"
+}
+
 # URL-encode a string (percent-encode everything except unreserved chars).
 urlencode() {
     local string="$1"
@@ -440,8 +482,14 @@ cmd_new() {
     prompt_source=$(truncate_str "$source" "$MAX_SOURCE_LEN")
 
     # Launch OpenCode in the worktree.
+    # NOTE: `--prompt "/work ..."` is treated as a plain message on startup,
+    # not as an interactive slash-command invocation. Build an equivalent
+    # prompt from commands/work.md so startup behavior matches manual `/work`.
+    local initial_prompt
+    initial_prompt=$(build_work_prompt "$prompt_source")
+
     log_info "Starting OpenCode..."
-    (cd "$worktree" && opencode --agent dispatch --prompt "/work ${prompt_source}")
+    (cd "$worktree" && opencode --agent dispatch --prompt "$initial_prompt")
 
     # After OpenCode exits, update task status
     if [[ "$is_pr_input" == true ]]; then

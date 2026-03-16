@@ -40,6 +40,7 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 ```
 
 1. `aid new` creates a worktree and launches OpenCode
+   - It uses the `commands/work.md` template to build the initial startup prompt (equivalent to manually running `/work` with the task text)
 2. AI explores → plans → implements → requests review → creates PR
 3. **Human Review:**
    - Run `aid view <task-id>` to open the PR on GitHub.
@@ -183,4 +184,3 @@ Define custom slash commands (e.g., `/work`, `/create-pr`).
 ## License
 
 MIT
-
