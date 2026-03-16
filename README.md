@@ -87,7 +87,7 @@ opencode --agent architect
 - Surfaces trade-offs and helps you make design decisions
 
 **What it does not do:**
-- Write or modify code (use `dispatch` or `aid` for that)
+- Write or modify code (use `aid` for autonomous tasks instead)
 - Act without confirmation — it always summarizes and asks before executing
 
 ## Statuses
