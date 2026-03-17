@@ -428,11 +428,46 @@ EOF
 # ==============================================================================
 
 cmd_new() {
-    local input="$*"   # join all args — caller passed "$@" after shifting 'new'
+    local custom_branch=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --branch)
+                [[ -n "${2:-}" ]] || die "Usage: aid new --branch <name> <task-description|issue-url|pr-url>"
+                custom_branch="$2"
+                shift 2
+                ;;
+            --branch=*)
+                custom_branch="${1#--branch=}"
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    local input="$*"
+    [[ -n "$input" ]] || die "Usage: aid new [--branch <name>] <task-description|issue-url|pr-url>"
+
     local task_id source source_url repo issue_body
 
     task_id=$(generate_task_id)
     local branch="aid/${task_id#aid-}"
+    if [[ -n "$custom_branch" ]]; then
+        git check-ref-format --branch "$custom_branch" >/dev/null 2>&1 || \
+            die "Invalid branch name: ${custom_branch}"
+        case "$custom_branch" in
+            main|master)
+                die "Refusing to use protected branch name: ${custom_branch}"
+                ;;
+        esac
+        branch="$custom_branch"
+    fi
 
     require_cmd git
     require_cmd opencode
@@ -478,6 +513,7 @@ EOF
 )
         repo="$issue_repo"
     elif is_github_pr_url "$input"; then
+        [[ -z "$custom_branch" ]] || die "--branch cannot be used with PR URLs; the PR head branch is used automatically"
         require_cmd gh
         is_pr_input=true
         source_url=$(normalize_github_pr_url "$input") || source_url="$input"
@@ -1309,9 +1345,10 @@ cmd_help() {
 ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
 
 ${BOLD}USAGE${NC}
-  aid new "task description"     Create new task and start working
-  aid new <issue-url>            Create task from GitHub issue
-  aid new <pr-url>               Create task from GitHub PR (fetches feedback)
+  aid new "task description"                Create new task and start working
+  aid new --branch feat/my-work "task"      Create task with a custom branch name
+  aid new <issue-url>                       Create task from GitHub issue
+  aid new <pr-url>                          Create task from GitHub PR (fetches feedback)
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Resume a locally tracked PR by its URL
@@ -1347,6 +1384,7 @@ ${BOLD}STATUSES${NC}
 
 ${BOLD}EXAMPLES${NC}
   aid new "Fix login timeout bug"
+  aid new --branch fix/login-timeout "Fix login timeout bug"
   aid new https://github.com/owner/repo/issues/42
   aid new https://github.com/owner/repo/pull/15
   aid status
@@ -1366,7 +1404,7 @@ main() {
 
     case "$cmd" in
         new)
-            [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url|pr-url>"
+            [[ -n "${2:-}" ]] || die "Usage: aid new [--branch <name>] <task-description|issue-url|pr-url>"
             shift
             cmd_new "$@"
             ;;

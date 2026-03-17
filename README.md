@@ -23,6 +23,7 @@ source ~/.bashrc  # or ~/.zshrc
 
 ```bash
 aid new "Add dark mode toggle"           # Start new task
+aid new --branch feat/dark-mode-toggle "Add dark mode toggle" # Start with custom branch name
 aid new https://github.com/o/r/issues/1  # From GitHub issue
 aid new https://github.com/o/r/pull/1    # From GitHub PR (fetches description, comments, reviews)
 aid review https://github.com/o/r/pull/1 # Run AI review on any PR URL and post feedback
@@ -78,6 +79,8 @@ When you run `aid <task-id>` on a task with requested changes:
 ## Recommended Workflow
 
 1. **Start a task:** Run `aid new "description"` to create a new task in a clean worktree. The AI will begin coding immediately.
+   - Optional: pass a custom branch name with `aid new --branch feat/my-change "description"`.
+   - Note: `--branch` is not supported for `aid new <pr-url>` because the PR head branch is used.
 2. **Let the AI work:** The AI explores, implements, reviews its own code, and creates a pull request autonomously.
 3. **Refine interactively:** Keep the OpenCode session open and continue to iterate with the AI in real time. You can ask follow-up questions, request changes, or guide the implementation.
 4. **Step away when needed:** If you need to close the terminal or work on something else, the task persists. The worktree and PR remain until merged. You can:
