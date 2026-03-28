@@ -1,4 +1,4 @@
-# aid
+# AID
 
 AI development workflow for OpenCode.
 
